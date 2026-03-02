@@ -151,13 +151,13 @@ export default function ContentCalendarPage() {
 
   async function handleAddEntry(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedBrandId || !addingDate || !newAssignee) return;
+    if (!selectedBrandId || !addingDate) return;
     try {
       await createEntry({
         brandId: selectedBrandId as Id<"brands">,
         title: newTitle,
         description: newDescription || undefined,
-        assigneeId: newAssignee as Id<"users">,
+        ...(newAssignee ? { assigneeId: newAssignee as Id<"users"> } : {}),
         platform: newPlatform,
         contentType: newContentType,
         postDate: addingDate,
@@ -423,7 +423,7 @@ export default function ContentCalendarPage() {
           <Card className="w-full max-w-md">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-[16px] text-[var(--text-primary)]">
-                Add Entry — {new Date(addingDate + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                Add Entry — Go Live: {new Date(addingDate + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
               </h3>
               <button
                 onClick={() => setAddingDate(null)}
@@ -476,14 +476,13 @@ export default function ContentCalendarPage() {
                 </div>
               </div>
               <div>
-                <label className="font-medium text-[12px] text-[var(--text-secondary)] block mb-1">Assignee</label>
+                <label className="font-medium text-[12px] text-[var(--text-secondary)] block mb-1">Assignee (optional)</label>
                 <select
                   value={newAssignee}
                   onChange={(e) => setNewAssignee(e.target.value)}
-                  required
                   className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
                 >
-                  <option value="">Select assignee</option>
+                  <option value="">Unassigned</option>
                   {employees.map((emp: any) => (
                     <option key={emp._id} value={emp._id}>
                       {emp.name ?? emp.email}{emp.designation ? ` — ${emp.designation}` : ""}
@@ -794,28 +793,11 @@ function TaskDetailSidebar({
         </div>
 
         <div>
-          <label className="font-medium text-[11px] text-[var(--text-muted)] uppercase tracking-wide block mb-1">Post Date</label>
+          <label className="font-medium text-[11px] text-[var(--text-muted)] uppercase tracking-wide block mb-1">Go Live Date</label>
           {isEditable ? (
             <input type="date" value={editPostDate} onChange={(e) => setEditPostDate(e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]" />
           ) : (
             <p className="text-[13px] text-[var(--text-primary)]">{task.postDate ?? "—"}</p>
-          )}
-        </div>
-
-        <div>
-          <label className="font-medium text-[11px] text-[var(--text-muted)] uppercase tracking-wide block mb-1">Status</label>
-          {isEditable ? (
-            <select
-              value={task.status}
-              onChange={(e) => updateTaskStatus({ taskId: task._id, newStatus: e.target.value }).catch((err: any) => toast("error", err.message ?? "Failed"))}
-              className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-2.5 py-1.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
-            >
-              {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          ) : (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium" style={{ color: sc.dot, backgroundColor: sc.bg }}>
-              {sc.label}
-            </span>
           )}
         </div>
 
@@ -839,6 +821,15 @@ function TaskDetailSidebar({
         </div>
 
         <div>
+          <label className="font-medium text-[11px] text-[var(--text-muted)] uppercase tracking-wide block mb-1">Assigned At</label>
+          <p className="text-[13px] text-[var(--text-primary)]">
+            {task.assignedAt
+              ? new Date(task.assignedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+              : "Not yet assigned"}
+          </p>
+        </div>
+
+        <div>
           <label className="font-medium text-[11px] text-[var(--text-muted)] uppercase tracking-wide block mb-1">Deadline</label>
           {isEditable ? (
             <input type="date" value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]" />
@@ -846,6 +837,23 @@ function TaskDetailSidebar({
             <p className="text-[13px] text-[var(--text-primary)]">
               {task.deadline ? new Date(task.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "No deadline"}
             </p>
+          )}
+        </div>
+
+        <div>
+          <label className="font-medium text-[11px] text-[var(--text-muted)] uppercase tracking-wide block mb-1">Status</label>
+          {isEditable ? (
+            <select
+              value={task.status}
+              onChange={(e) => updateTaskStatus({ taskId: task._id, newStatus: e.target.value }).catch((err: any) => toast("error", err.message ?? "Failed"))}
+              className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-2.5 py-1.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+            >
+              {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          ) : (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium" style={{ color: sc.dot, backgroundColor: sc.bg }}>
+              {sc.label}
+            </span>
           )}
         </div>
 

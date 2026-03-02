@@ -110,6 +110,7 @@ export default defineSchema({
     platform: v.optional(v.string()),
     contentType: v.optional(v.string()),
     postDate: v.optional(v.string()),
+    assignedAt: v.optional(v.number()),
   })
     .index("by_brief", ["briefId"])
     .index("by_assignee", ["assigneeId"])

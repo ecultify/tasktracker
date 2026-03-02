@@ -104,7 +104,7 @@ export const createEntryForBrand = mutation({
     brandId: v.id("brands"),
     title: v.string(),
     description: v.optional(v.string()),
-    assigneeId: v.id("users"),
+    assigneeId: v.optional(v.id("users")),
     platform: v.string(),
     contentType: v.string(),
     postDate: v.string(),
@@ -150,7 +150,7 @@ export const createEntryForBrand = mutation({
       briefId,
       title: args.title,
       description: args.description,
-      assigneeId: args.assigneeId,
+      assigneeId: args.assigneeId ?? userId,
       assignedBy: userId,
       status: "pending",
       sortOrder: maxOrder + 1000,
@@ -160,19 +160,22 @@ export const createEntryForBrand = mutation({
       platform: args.platform,
       contentType: args.contentType,
       postDate: args.postDate,
+      ...(args.assigneeId ? { assignedAt: Date.now() } : {}),
     });
 
-    await ctx.db.insert("notifications", {
-      recipientId: args.assigneeId,
-      type: "task_assigned",
-      title: "Content calendar task assigned",
-      message: `You were assigned: ${args.title}`,
-      briefId,
-      taskId,
-      triggeredBy: userId,
-      read: false,
-      createdAt: Date.now(),
-    });
+    if (args.assigneeId) {
+      await ctx.db.insert("notifications", {
+        recipientId: args.assigneeId,
+        type: "task_assigned",
+        title: "Content calendar task assigned",
+        message: `You were assigned: ${args.title}`,
+        briefId,
+        taskId,
+        triggeredBy: userId,
+        read: false,
+        createdAt: Date.now(),
+      });
+    }
 
     return taskId;
   },
@@ -356,6 +359,7 @@ export const createCalendarEntry = mutation({
       platform: args.platform,
       contentType: args.contentType,
       postDate: args.postDate,
+      assignedAt: Date.now(),
     });
 
     await ctx.db.insert("notifications", {
