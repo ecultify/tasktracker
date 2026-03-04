@@ -436,4 +436,30 @@ export default defineSchema({
   })
     .index("by_brand", ["brandId"])
     .index("by_jsr_link", ["jsrLinkId"]),
+
+  // ─── JSR MESSAGES (brand manager <-> client) ──
+  jsrMessages: defineTable({
+    brandId: v.id("brands"),
+    jsrLinkId: v.id("jsrLinks"),
+    senderType: v.union(v.literal("client"), v.literal("manager")),
+    senderName: v.optional(v.string()),
+    senderId: v.optional(v.id("users")),
+    content: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_brand", ["brandId"])
+    .index("by_jsr_link", ["jsrLinkId"]),
+
+  // ─── JSR REMARKS (client comments on deliverables) ──
+  jsrRemarks: defineTable({
+    deliverableId: v.id("deliverables"),
+    brandId: v.id("brands"),
+    senderType: v.union(v.literal("client"), v.literal("manager")),
+    senderName: v.optional(v.string()),
+    senderId: v.optional(v.id("users")),
+    content: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_deliverable", ["deliverableId"])
+    .index("by_brand", ["brandId"]),
 });

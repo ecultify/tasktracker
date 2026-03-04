@@ -313,7 +313,8 @@ export const createCalendarEntry = mutation({
     briefId: v.id("briefs"),
     title: v.string(),
     description: v.optional(v.string()),
-    assigneeId: v.id("users"),
+    assigneeId: v.optional(v.id("users")),
+    assignedBy: v.optional(v.id("users")),
     platform: v.string(),
     contentType: v.string(),
     postDate: v.string(),
@@ -337,9 +338,12 @@ export const createCalendarEntry = mutation({
     const sheetExists = sheets.some((s) => s.month === month);
     if (!sheetExists) throw new Error(`No sheet for month ${month}. Create a sheet tab first.`);
 
+    const assignor = args.assignedBy ?? userId;
+    const assignee = args.assigneeId ?? assignor;
+
     const existingTasks = await ctx.db
       .query("tasks")
-      .withIndex("by_assignee_sort", (q) => q.eq("assigneeId", args.assigneeId))
+      .withIndex("by_brief", (q) => q.eq("briefId", args.briefId))
       .collect();
     const maxOrder = existingTasks.length
       ? Math.max(...existingTasks.map((t) => t.sortOrder))
@@ -349,8 +353,8 @@ export const createCalendarEntry = mutation({
       briefId: args.briefId,
       title: args.title,
       description: args.description,
-      assigneeId: args.assigneeId,
-      assignedBy: userId,
+      assigneeId: assignee,
+      assignedBy: assignor,
       status: "pending",
       sortOrder: maxOrder + 1000,
       duration: "1d",
@@ -359,20 +363,22 @@ export const createCalendarEntry = mutation({
       platform: args.platform,
       contentType: args.contentType,
       postDate: args.postDate,
-      assignedAt: Date.now(),
+      ...(args.assigneeId ? { assignedAt: Date.now() } : {}),
     });
 
-    await ctx.db.insert("notifications", {
-      recipientId: args.assigneeId,
-      type: "task_assigned",
-      title: "Content calendar task assigned",
-      message: `You were assigned: ${args.title}`,
-      briefId: args.briefId,
-      taskId,
-      triggeredBy: userId,
-      read: false,
-      createdAt: Date.now(),
-    });
+    if (args.assigneeId) {
+      await ctx.db.insert("notifications", {
+        recipientId: args.assigneeId,
+        type: "task_assigned",
+        title: "Content calendar task assigned",
+        message: `You were assigned: ${args.title}`,
+        briefId: args.briefId,
+        taskId,
+        triggeredBy: assignor,
+        read: false,
+        createdAt: Date.now(),
+      });
+    }
 
     await ctx.db.insert("activityLog", {
       briefId: args.briefId,

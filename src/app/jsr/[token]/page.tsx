@@ -7,19 +7,18 @@ import { api } from "@/convex/_generated/api";
 import {
   CheckCircle2,
   Clock,
-  Send,
-  Plus,
   Calendar,
   ChevronDown,
   ChevronUp,
   Circle,
   Loader2,
   CalendarDays,
-  LayoutGrid,
   Activity,
   Zap,
   Inbox,
   Sparkles,
+  MessageCircle,
+  Send,
 } from "lucide-react";
 
 const TASK_STATUS: Record<string, { label: string; color: string; icon: "pending" | "progress" | "review" | "done" }> = {
@@ -29,13 +28,6 @@ const TASK_STATUS: Record<string, { label: string; color: string; icon: "pending
   done: { label: "Completed", color: "#10b981", icon: "done" },
 };
 
-const CLIENT_STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  pending_review: { label: "Under Review", color: "#f59e0b" },
-  accepted: { label: "Accepted", color: "#3b82f6" },
-  in_progress: { label: "In Progress", color: "#8b5cf6" },
-  completed: { label: "Completed", color: "#10b981" },
-  declined: { label: "Declined", color: "#ef4444" },
-};
 
 function formatDate(ts: number): string {
   return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -61,8 +53,11 @@ function timeAgo(ts: number): string {
 }
 
 function daysUntil(ts: number): { text: string; urgent: boolean; overdue: boolean } {
-  const diff = ts - Date.now();
-  const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const deadline = new Date(ts);
+  deadline.setHours(0, 0, 0, 0);
+  const days = Math.round((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   if (days < 0) return { text: `${Math.abs(days)}d overdue`, urgent: true, overdue: true };
   if (days === 0) return { text: "Due today", urgent: true, overdue: false };
   if (days === 1) return { text: "Due tomorrow", urgent: true, overdue: false };
@@ -85,18 +80,15 @@ export default function JsrPublicPage() {
   const params = useParams();
   const token = params.token as string;
   const jsr = useQuery(api.jsr.getJsrByToken, { token });
-  const addClientTask = useMutation(api.jsr.addClientTask);
+  const sendClientMessage = useMutation(api.jsr.sendClientMessage);
+  const addJsrRemark = useMutation(api.jsr.addJsrRemark);
 
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [proposedDeadline, setProposedDeadline] = useState("");
-  const [clientName, setClientName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
   const [calendarExpanded, setCalendarExpanded] = useState(true);
-  const [requestsExpanded, setRequestsExpanded] = useState(true);
   const [activityExpanded, setActivityExpanded] = useState(false);
+  const [messagesExpanded, setMessagesExpanded] = useState(true);
+  const [msgContent, setMsgContent] = useState("");
+  const [msgName, setMsgName] = useState("");
+  const [sendingMsg, setSendingMsg] = useState(false);
 
   const calendarList = jsr?.calendarList ?? [];
 
@@ -152,27 +144,6 @@ export default function JsrPublicPage() {
   }
 
   const bc = jsr.brand.color;
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    try {
-      await addClientTask({
-        token,
-        title,
-        description: description || undefined,
-        proposedDeadline: proposedDeadline ? new Date(proposedDeadline).getTime() : undefined,
-        clientName: clientName || undefined,
-      });
-      setTitle("");
-      setDescription("");
-      setProposedDeadline("");
-      setShowAddForm(false);
-      setSubmitted(true);
-      setTimeout(() => setSubmitted(false), 4000);
-    } catch {}
-    setSubmitting(false);
-  }
 
   const progressPct = jsr.internalSummary.total > 0
     ? Math.round((jsr.internalSummary.done / jsr.internalSummary.total) * 100)
@@ -270,14 +241,6 @@ export default function JsrPublicPage() {
       </header>
 
       <main className="max-w-3xl mx-auto px-6 py-6 space-y-5">
-        {/* Success Toast */}
-        {submitted && (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[#f0fdf4] border border-[#bbf7d0] text-[#166534] text-[13px] font-medium">
-            <CheckCircle2 className="h-4 w-4" />
-            Request submitted! The team will review it shortly.
-          </div>
-        )}
-
         {/* ═══ PROGRESS OVERVIEW ═══ */}
         <section className="bg-white rounded-2xl border border-[#e5e5e5] overflow-hidden shadow-sm">
           <div className="p-6">
@@ -350,6 +313,8 @@ export default function JsrPublicPage() {
                   total={total}
                   pct={pct}
                   brandColor={bc}
+                  token={token}
+                  addJsrRemark={addJsrRemark}
                 />
               );
             })}
@@ -467,146 +432,6 @@ export default function JsrPublicPage() {
           </section>
         )}
 
-        {/* ═══ CLIENT REQUESTS ═══ */}
-        <section className="bg-white rounded-2xl border border-[#e5e5e5] overflow-hidden shadow-sm">
-          <button
-            onClick={() => setRequestsExpanded(!requestsExpanded)}
-            className="flex items-center justify-between w-full px-6 py-4 hover:bg-[#fafafa] transition-colors"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: bc + "12" }}>
-                <LayoutGrid className="h-3.5 w-3.5" style={{ color: bc }} />
-              </div>
-              <h2 className="font-semibold text-[15px] text-[#171717]">Your Requests</h2>
-              {jsr.clientTasks.length > 0 && (
-                <span className="text-[12px] text-[#a3a3a3] ml-1">({jsr.clientTasks.length})</span>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              {jsr.clientTasksDeadline && (
-                <span className="text-[12px] font-medium px-2.5 py-1 rounded-lg flex items-center gap-1" style={{ color: bc, backgroundColor: bc + "10" }}>
-                  <Calendar className="h-3 w-3" />
-                  {formatDate(jsr.clientTasksDeadline)}
-                </span>
-              )}
-              {requestsExpanded ? <ChevronUp className="h-4 w-4 text-[#a3a3a3]" /> : <ChevronDown className="h-4 w-4 text-[#a3a3a3]" />}
-            </div>
-          </button>
-
-          {requestsExpanded && (
-            <div className="border-t border-[#f0f0f0]">
-              {jsr.clientTasks.length > 0 ? (
-                <div>
-                  {jsr.clientTasks.map((task: any, i: number) => {
-                    const statusInfo = CLIENT_STATUS_LABELS[task.status];
-                    return (
-                      <div key={task._id} className={`px-6 py-4 ${i < jsr.clientTasks.length - 1 ? "border-b border-[#f5f5f5]" : ""}`}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium text-[14px] text-[#171717]">{task.title}</p>
-                              {task.clientName && (
-                                <span className="text-[10px] text-[#a3a3a3] bg-[#f5f5f5] px-1.5 py-0.5 rounded">by {task.clientName}</span>
-                              )}
-                            </div>
-                            {task.description && (
-                              <p className="text-[13px] text-[#737373] mt-1 leading-relaxed">{task.description}</p>
-                            )}
-                            <div className="flex items-center gap-4 mt-2.5">
-                              {task.proposedDeadline && (
-                                <span className="flex items-center gap-1 text-[11px] text-[#a3a3a3]">
-                                  <Clock className="h-3 w-3" />Proposed: {formatDate(task.proposedDeadline)}
-                                </span>
-                              )}
-                              {task.finalDeadline && (
-                                <span className="flex items-center gap-1 text-[11px] font-medium" style={{ color: bc }}>
-                                  <Calendar className="h-3 w-3" />Deadline: {formatDate(task.finalDeadline)}
-                                </span>
-                              )}
-                              {!task.finalDeadline && task.status === "pending_review" && (
-                                <span className="text-[11px] text-[#a3a3a3] italic flex items-center gap-1">
-                                  <Loader2 className="h-3 w-3 animate-spin" />Deadline pending review
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <span
-                            className="shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-full whitespace-nowrap"
-                            style={{ color: statusInfo?.color, backgroundColor: statusInfo?.color + "12" }}
-                          >
-                            {statusInfo?.label}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="px-6 py-8 text-center">
-                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ backgroundColor: bc + "08" }}>
-                    <Inbox className="h-6 w-6" style={{ color: bc + "60" }} />
-                  </div>
-                  <p className="text-[13px] text-[#a3a3a3]">No requests yet. Need something? Add a request below.</p>
-                </div>
-              )}
-
-              {/* Add form */}
-              <div className="border-t border-[#f0f0f0] px-6 py-4">
-                {showAddForm ? (
-                  <div>
-                    <h3 className="font-medium text-[14px] text-[#171717] mb-4">New Request</h3>
-                    <form onSubmit={handleSubmit} className="space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-[12px] font-medium text-[#525252] block mb-1">Your Name</label>
-                          <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Your name" className="w-full px-3 py-2.5 rounded-xl border border-[#e5e5e5] text-[13px] text-[#171717] placeholder-[#c4c4c4] focus:outline-none focus:ring-2 focus:border-transparent transition-all bg-white" style={{ "--tw-ring-color": bc + "30" } as any} />
-                        </div>
-                        <div>
-                          <label className="text-[12px] font-medium text-[#525252] block mb-1">Proposed Deadline</label>
-                          <input type="date" value={proposedDeadline} onChange={(e) => setProposedDeadline(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-[#e5e5e5] text-[13px] text-[#171717] focus:outline-none focus:ring-2 focus:border-transparent transition-all bg-white" style={{ "--tw-ring-color": bc + "30" } as any} />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-[12px] font-medium text-[#525252] block mb-1">Task Title *</label>
-                        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What do you need?" required className="w-full px-3 py-2.5 rounded-xl border border-[#e5e5e5] text-[13px] text-[#171717] placeholder-[#c4c4c4] focus:outline-none focus:ring-2 focus:border-transparent transition-all bg-white" style={{ "--tw-ring-color": bc + "30" } as any} />
-                      </div>
-                      <div>
-                        <label className="text-[12px] font-medium text-[#525252] block mb-1">Description</label>
-                        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Provide more details..." rows={3} className="w-full px-3 py-2.5 rounded-xl border border-[#e5e5e5] text-[13px] text-[#171717] placeholder-[#c4c4c4] focus:outline-none focus:ring-2 focus:border-transparent transition-all bg-white resize-none" style={{ "--tw-ring-color": bc + "30" } as any} />
-                      </div>
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          type="submit"
-                          disabled={submitting || !title.trim()}
-                          className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-white text-[13px] font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
-                          style={{ backgroundColor: bc }}
-                        >
-                          <Send className="h-3.5 w-3.5" />
-                          {submitting ? "Submitting..." : "Submit Request"}
-                        </button>
-                        <button type="button" onClick={() => setShowAddForm(false)} className="px-4 py-2.5 rounded-xl text-[13px] font-medium text-[#737373] hover:bg-[#f5f5f5] transition-colors">
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setShowAddForm(true)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed text-[13px] font-medium transition-all hover:bg-opacity-5"
-                    style={{ borderColor: bc + "40", color: bc }}
-                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = bc + "08"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add a Request
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-        </section>
-
         {/* ═══ RECENT ACTIVITY ═══ */}
         {recentActivity.length > 0 && (
           <section className="bg-white rounded-2xl border border-[#e5e5e5] overflow-hidden shadow-sm">
@@ -639,8 +464,102 @@ export default function JsrPublicPage() {
           </section>
         )}
 
+        {/* ═══ MESSAGES ═══ */}
+        <section className="bg-white rounded-2xl border border-[#e5e5e5] overflow-hidden shadow-sm">
+          <button
+            onClick={() => setMessagesExpanded(!messagesExpanded)}
+            className="flex items-center justify-between w-full px-6 py-4 hover:bg-[#fafafa] transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: bc + "12" }}>
+                <MessageCircle className="h-3.5 w-3.5" style={{ color: bc }} />
+              </div>
+              <h2 className="font-semibold text-[15px] text-[#171717]">Messages</h2>
+              {(jsr.messages ?? []).length > 0 && (
+                <span className="text-[12px] text-[#a3a3a3] ml-1">({jsr.messages.length})</span>
+              )}
+            </div>
+            {messagesExpanded ? <ChevronUp className="h-4 w-4 text-[#a3a3a3]" /> : <ChevronDown className="h-4 w-4 text-[#a3a3a3]" />}
+          </button>
+          {messagesExpanded && (
+            <div className="border-t border-[#f0f0f0]">
+              <div className="px-6 py-4 max-h-[400px] overflow-y-auto space-y-3">
+                {(jsr.messages ?? []).length === 0 && (
+                  <p className="text-[13px] text-[#a3a3a3] text-center py-4">No messages yet. Start a conversation with the team.</p>
+                )}
+                {(jsr.messages ?? []).map((msg: any) => (
+                  <div
+                    key={msg._id}
+                    className={`flex ${msg.senderType === "client" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+                        msg.senderType === "client"
+                          ? "rounded-br-md text-white"
+                          : "rounded-bl-md bg-[#f0f0f0] text-[#171717]"
+                      }`}
+                      style={msg.senderType === "client" ? { backgroundColor: bc } : {}}
+                    >
+                      <p className={`text-[10px] font-semibold mb-0.5 ${msg.senderType === "client" ? "text-white/70" : "text-[#737373]"}`}>
+                        {msg.senderName || (msg.senderType === "client" ? "Client" : "Manager")}
+                      </p>
+                      <p className="text-[13px] leading-relaxed">{msg.content}</p>
+                      <p className={`text-[9px] mt-1 ${msg.senderType === "client" ? "text-white/50" : "text-[#a3a3a3]"}`}>
+                        {timeAgo(msg.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-[#f0f0f0] px-6 py-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    value={msgName}
+                    onChange={(e) => setMsgName(e.target.value)}
+                    placeholder="Your name"
+                    className="flex-1 px-3 py-2 rounded-xl border border-[#e5e5e5] text-[13px] text-[#171717] placeholder-[#c4c4c4] focus:outline-none focus:ring-2 focus:border-transparent bg-white"
+                    style={{ "--tw-ring-color": bc + "30" } as any}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={msgContent}
+                    onChange={(e) => setMsgContent(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey && msgContent.trim()) {
+                        e.preventDefault();
+                        setSendingMsg(true);
+                        sendClientMessage({ token, content: msgContent.trim(), senderName: msgName || undefined })
+                          .then(() => setMsgContent(""))
+                          .finally(() => setSendingMsg(false));
+                      }
+                    }}
+                    placeholder="Type a message..."
+                    className="flex-1 px-3 py-2 rounded-xl border border-[#e5e5e5] text-[13px] text-[#171717] placeholder-[#c4c4c4] focus:outline-none focus:ring-2 focus:border-transparent bg-white"
+                    style={{ "--tw-ring-color": bc + "30" } as any}
+                  />
+                  <button
+                    onClick={() => {
+                      if (!msgContent.trim()) return;
+                      setSendingMsg(true);
+                      sendClientMessage({ token, content: msgContent.trim(), senderName: msgName || undefined })
+                        .then(() => setMsgContent(""))
+                        .finally(() => setSendingMsg(false));
+                    }}
+                    disabled={sendingMsg || !msgContent.trim()}
+                    className="shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-white transition-all disabled:opacity-50"
+                    style={{ backgroundColor: bc }}
+                  >
+                    <Send className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+
         {/* ═══ DEADLINE SUMMARY ═══ */}
-        {(jsr.internalSummary.internalDeadline || jsr.clientTasksDeadline || jsr.overallDeadline) && (
+        {(jsr.internalSummary.internalDeadline || jsr.overallDeadline) && (
           <section className="rounded-2xl overflow-hidden shadow-sm" style={{ background: `linear-gradient(135deg, ${bc}08, ${bc}04)`, border: `1px solid ${bc}20` }}>
             <div className="p-6">
               <h2 className="font-semibold text-[15px] text-[#171717] mb-4 flex items-center gap-2">
@@ -652,12 +571,6 @@ export default function JsrPublicPage() {
                   <div className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-white/60">
                     <span className="text-[13px] text-[#525252]">Existing Work</span>
                     <span className="text-[13px] font-semibold text-[#171717]">{formatDate(jsr.internalSummary.internalDeadline)}</span>
-                  </div>
-                )}
-                {jsr.clientTasksDeadline && (
-                  <div className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-white/60">
-                    <span className="text-[13px] text-[#525252]">Additional Requests</span>
-                    <span className="text-[13px] font-semibold text-[#171717]">{formatDate(jsr.clientTasksDeadline)}</span>
                   </div>
                 )}
                 {jsr.overallDeadline && (
@@ -687,10 +600,13 @@ export default function JsrPublicPage() {
 }
 
 /* ────── Brief Group Component ────── */
-function BriefGroup({ title, tasks, done, total, pct, brandColor }: {
+function BriefGroup({ title, tasks, done, total, pct, brandColor, token, addJsrRemark }: {
   title: string; tasks: any[]; done: number; total: number; pct: number; brandColor: string;
+  token: string; addJsrRemark: any;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const [expandedDeliverables, setExpandedDeliverables] = useState<Record<string, boolean>>({});
+
   return (
     <div className="bg-white rounded-2xl border border-[#e5e5e5] overflow-hidden shadow-sm">
       <button onClick={() => setExpanded(!expanded)} className="flex items-center justify-between w-full px-6 py-4 hover:bg-[#fafafa] transition-colors">
@@ -713,16 +629,183 @@ function BriefGroup({ title, tasks, done, total, pct, brandColor }: {
         <div className="border-t border-[#f0f0f0]">
           {tasks.map((task: any, i: number) => {
             const info = TASK_STATUS[task.status] ?? { label: task.status, color: "#a3a3a3" };
+            const hasDels = task.deliverables && task.deliverables.length > 0;
+            const delsOpen = expandedDeliverables[task._id];
             return (
-              <div key={task._id} className={`flex items-center gap-3 px-6 py-2.5 ${i < tasks.length - 1 ? "border-b border-[#f8f8f8]" : ""} ${task.status === "done" ? "opacity-50" : ""}`}>
-                <StatusIcon status={task.status} brandColor={brandColor} />
-                <p className={`flex-1 text-[13px] text-[#171717] ${task.status === "done" ? "line-through" : ""}`}>{task.title}</p>
-                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ color: info.color, backgroundColor: info.color + "12" }}>{info.label}</span>
+              <div key={task._id} className={i < tasks.length - 1 ? "border-b border-[#f8f8f8]" : ""}>
+                <div className={`flex items-center gap-3 px-6 py-2.5 ${task.status === "done" && !hasDels ? "opacity-50" : ""}`}>
+                  <StatusIcon status={task.status} brandColor={brandColor} />
+                  <p className={`flex-1 text-[13px] text-[#171717] ${task.status === "done" && !hasDels ? "line-through" : ""}`}>{task.title}</p>
+                  <div className="flex items-center gap-2">
+                    {hasDels && (
+                      <button
+                        onClick={() => setExpandedDeliverables((prev) => ({ ...prev, [task._id]: !prev[task._id] }))}
+                        className="text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1 transition-colors"
+                        style={{ color: brandColor, backgroundColor: brandColor + "10" }}
+                      >
+                        {task.deliverables.length} deliverable{task.deliverables.length > 1 ? "s" : ""}
+                        {delsOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      </button>
+                    )}
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ color: info.color, backgroundColor: info.color + "12" }}>{info.label}</span>
+                  </div>
+                </div>
+                {hasDels && delsOpen && (
+                  <div className="px-6 pb-3">
+                    {task.deliverables.map((del: any) => (
+                      <DeliverableCard
+                        key={del._id}
+                        deliverable={del}
+                        brandColor={brandColor}
+                        token={token}
+                        addJsrRemark={addJsrRemark}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ────── Deliverable Card with Remarks ────── */
+function DeliverableCard({ deliverable, brandColor, token, addJsrRemark }: {
+  deliverable: any; brandColor: string; token: string; addJsrRemark: any;
+}) {
+  const [remarkContent, setRemarkContent] = useState("");
+  const [remarkName, setRemarkName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [showRemarkForm, setShowRemarkForm] = useState(false);
+
+  async function handleSubmitRemark() {
+    if (!remarkContent.trim()) return;
+    setSubmitting(true);
+    try {
+      await addJsrRemark({
+        token,
+        deliverableId: deliverable._id,
+        content: remarkContent.trim(),
+        senderName: remarkName || undefined,
+      });
+      setRemarkContent("");
+      setShowRemarkForm(false);
+    } catch {}
+    setSubmitting(false);
+  }
+
+  return (
+    <div className="ml-7 mt-2 rounded-xl border border-[#e5e5e5] bg-[#fafafa] overflow-hidden">
+      <div className="px-4 py-3">
+        {deliverable.message && (
+          <p className="text-[12px] text-[#525252] mb-2">{deliverable.message}</p>
+        )}
+        {deliverable.link && (
+          <a href={deliverable.link} target="_blank" rel="noopener noreferrer" className="text-[12px] font-medium underline mb-2 block" style={{ color: brandColor }}>
+            {deliverable.link}
+          </a>
+        )}
+        {deliverable.files && deliverable.files.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {deliverable.files.map((f: any, idx: number) => (
+              <a
+                key={idx}
+                href={f.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-[#e5e5e5] text-[11px] font-medium text-[#525252] hover:border-[#c4c4c4] transition-colors"
+              >
+                <svg className="h-3 w-3 text-[#a3a3a3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                {f.name}
+              </a>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-2 text-[10px] text-[#a3a3a3]">
+          <span>{timeAgo(deliverable.submittedAt)}</span>
+          {deliverable.status && (
+            <span className={`font-medium px-1.5 py-0.5 rounded ${
+              deliverable.status === "approved" ? "text-[#10b981] bg-[#10b98112]" :
+              deliverable.status === "rejected" ? "text-[#ef4444] bg-[#ef444412]" :
+              "text-[#f59e0b] bg-[#f59e0b12]"
+            }`}>
+              {deliverable.status === "approved" ? "Approved" : deliverable.status === "rejected" ? "Revision Requested" : "Pending Review"}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Remarks thread */}
+      {deliverable.remarks && deliverable.remarks.length > 0 && (
+        <div className="border-t border-[#e5e5e5] px-4 py-2 space-y-2">
+          {deliverable.remarks.map((r: any) => (
+            <div key={r._id} className="flex gap-2">
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 mt-0.5 ${
+                r.senderType === "client" ? "text-white" : "bg-[#e5e5e5] text-[#525252]"
+              }`} style={r.senderType === "client" ? { backgroundColor: brandColor } : {}}>
+                {(r.senderName || (r.senderType === "client" ? "C" : "M"))[0].toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-[#171717]">{r.senderName || (r.senderType === "client" ? "Client" : "Manager")}</span>
+                  <span className="text-[9px] text-[#a3a3a3]">{timeAgo(r.createdAt)}</span>
+                </div>
+                <p className="text-[12px] text-[#525252] leading-relaxed">{r.content}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add remark form */}
+      <div className="border-t border-[#e5e5e5] px-4 py-2">
+        {showRemarkForm ? (
+          <div className="space-y-2">
+            <input
+              value={remarkName}
+              onChange={(e) => setRemarkName(e.target.value)}
+              placeholder="Your name"
+              className="w-full px-3 py-1.5 rounded-lg border border-[#e5e5e5] text-[12px] text-[#171717] placeholder-[#c4c4c4] focus:outline-none focus:ring-1 bg-white"
+              style={{ "--tw-ring-color": brandColor + "40" } as any}
+            />
+            <div className="flex gap-2">
+              <input
+                value={remarkContent}
+                onChange={(e) => setRemarkContent(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitRemark(); } }}
+                placeholder="Leave feedback..."
+                className="flex-1 px-3 py-1.5 rounded-lg border border-[#e5e5e5] text-[12px] text-[#171717] placeholder-[#c4c4c4] focus:outline-none focus:ring-1 bg-white"
+                style={{ "--tw-ring-color": brandColor + "40" } as any}
+              />
+              <button
+                onClick={handleSubmitRemark}
+                disabled={submitting || !remarkContent.trim()}
+                className="px-3 py-1.5 rounded-lg text-white text-[11px] font-medium disabled:opacity-50"
+                style={{ backgroundColor: brandColor }}
+              >
+                {submitting ? "..." : "Send"}
+              </button>
+              <button
+                onClick={() => setShowRemarkForm(false)}
+                className="px-2 py-1.5 rounded-lg text-[11px] text-[#737373] hover:bg-[#f0f0f0]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowRemarkForm(true)}
+            className="text-[11px] font-medium transition-colors"
+            style={{ color: brandColor }}
+          >
+            Leave feedback
+          </button>
+        )}
+      </div>
     </div>
   );
 }

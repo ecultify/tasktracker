@@ -130,8 +130,56 @@ export const getJsrByToken = query({
       internalDeadline,
     };
 
-    // Tasks grouped by brief for client view — title + status only, no assignee
-    const briefGroups: Record<string, { briefTitle: string; briefStatus: string; tasks: { _id: string; title: string; status: string }[] }> = {};
+    // Fetch deliverables and remarks for completed tasks
+    const allDeliverables = await ctx.db.query("deliverables").collect();
+    const allRemarks = await ctx.db
+      .query("jsrRemarks")
+      .withIndex("by_brand", (q) => q.eq("brandId", jsrLink.brandId))
+      .collect();
+
+    const taskDeliverableMap: Record<string, any[]> = {};
+    for (const t of internalTasks) {
+      if (t.status !== "done") continue;
+      const dels = allDeliverables.filter((d) => d.taskId === t._id);
+      if (dels.length === 0) continue;
+      taskDeliverableMap[t._id] = await Promise.all(
+        dels.map(async (d) => {
+          let files: { name: string; url: string }[] = [];
+          if (d.fileIds && d.fileIds.length > 0) {
+            files = (
+              await Promise.all(
+                d.fileIds.map(async (fileId, idx) => {
+                  const url = await ctx.storage.getUrl(fileId);
+                  return { name: d.fileNames?.[idx] ?? "file", url: url ?? "" };
+                })
+              )
+            ).filter((f) => f.url);
+          }
+          const remarks = allRemarks
+            .filter((r) => r.deliverableId === d._id)
+            .sort((a, b) => a.createdAt - b.createdAt)
+            .map((r) => ({
+              _id: r._id,
+              senderType: r.senderType,
+              senderName: r.senderName,
+              content: r.content,
+              createdAt: r.createdAt,
+            }));
+          return {
+            _id: d._id,
+            message: d.message,
+            link: d.link,
+            status: d.status,
+            submittedAt: d.submittedAt,
+            files,
+            remarks,
+          };
+        })
+      );
+    }
+
+    // Tasks grouped by brief for client view
+    const briefGroups: Record<string, { briefTitle: string; briefStatus: string; tasks: { _id: string; title: string; status: string; deliverables?: any[] }[] }> = {};
     for (const t of regularTasks) {
       const brief = brandBriefs.find((b) => b._id === t.briefId);
       const key = t.briefId;
@@ -142,7 +190,12 @@ export const getJsrByToken = query({
           tasks: [],
         };
       }
-      briefGroups[key].tasks.push({ _id: t._id, title: t.title, status: t.status });
+      briefGroups[key].tasks.push({
+        _id: t._id,
+        title: t.title,
+        status: t.status,
+        ...(taskDeliverableMap[t._id] ? { deliverables: taskDeliverableMap[t._id] } : {}),
+      });
     }
     const tasksByBrief = Object.values(briefGroups);
 
@@ -193,58 +246,22 @@ export const getJsrByToken = query({
 
     const lastUpdated = brandActivity.length > 0 ? brandActivity[0].timestamp : null;
 
-    // Client-added tasks — query by brand so all requests persist across links
-    const clientTasks = await ctx.db
-      .query("jsrClientTasks")
+    const overallDeadline = internalDeadline;
+
+    // Messages
+    const messages = await ctx.db
+      .query("jsrMessages")
       .withIndex("by_brand", (q) => q.eq("brandId", jsrLink.brandId))
       .collect();
-
-    // Accepted client tasks WITHOUT a linkedTaskId are legacy — count them manually
-    const unlinkedActive = clientTasks.filter(
-      (t) => !t.linkedTaskId && (t.status === "accepted" || t.status === "in_progress" || t.status === "completed")
-    );
-
-    function clientStatusToInternal(s: string) {
-      if (s === "accepted") return "pending";
-      if (s === "in_progress") return "in-progress";
-      if (s === "completed") return "done";
-      return "pending";
-    }
-
-    // Merge unlinked accepted client tasks into summary
-    const combinedSummary = {
-      total: internalSummary.total + unlinkedActive.length,
-      pending: internalSummary.pending + unlinkedActive.filter((t) => t.status === "accepted").length,
-      inProgress: internalSummary.inProgress + unlinkedActive.filter((t) => t.status === "in_progress").length,
-      review: internalSummary.review,
-      done: internalSummary.done + unlinkedActive.filter((t) => t.status === "completed").length,
-      internalDeadline,
-    };
-
-    // Add unlinked accepted tasks as a group in tasksByBrief
-    if (unlinkedActive.length > 0) {
-      tasksByBrief.push({
-        briefTitle: "Client Requests",
-        briefStatus: "active",
-        tasks: unlinkedActive.map((t) => ({
-          _id: t._id,
-          title: t.title,
-          status: clientStatusToInternal(t.status),
-        })),
-      });
-    }
-
-    const clientDeadlines = clientTasks
-      .map((t) => t.finalDeadline)
-      .filter((d): d is number => d !== undefined);
-    const clientTasksDeadline =
-      clientDeadlines.length > 0 ? Math.max(...clientDeadlines) : null;
-
-    const allDeadlines = [internalDeadline, clientTasksDeadline].filter(
-      (d): d is number => d !== null
-    );
-    const overallDeadline =
-      allDeadlines.length > 0 ? Math.max(...allDeadlines) : null;
+    const sortedMessages = messages
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map((m) => ({
+        _id: m._id,
+        senderType: m.senderType,
+        senderName: m.senderName,
+        content: m.content,
+        createdAt: m.createdAt,
+      }));
 
     return {
       brand: {
@@ -253,24 +270,14 @@ export const getJsrByToken = query({
         description: brand.description,
         logoUrl: brand.logoId ? await ctx.storage.getUrl(brand.logoId) : null,
       },
-      internalSummary: combinedSummary,
+      internalSummary,
       tasksByBrief,
       taskList,
       calendarList,
       recentActivity,
       lastUpdated,
-      clientTasks: clientTasks.map((t) => ({
-        _id: t._id,
-        title: t.title,
-        description: t.description,
-        proposedDeadline: t.proposedDeadline,
-        finalDeadline: t.finalDeadline,
-        status: t.status,
-        clientName: t.clientName,
-        createdAt: t.createdAt,
-      })),
-      clientTasksDeadline,
       overallDeadline,
+      messages: sortedMessages,
     };
   },
 });
@@ -567,5 +574,164 @@ export const setCumulativeDeadline = mutation({
         await ctx.db.patch(task._id, { cumulativeDeadline: deadline });
       }
     }
+  },
+});
+
+// ─── JSR MESSAGES ────────────────────────────────
+
+export const sendClientMessage = mutation({
+  args: {
+    token: v.string(),
+    content: v.string(),
+    senderName: v.optional(v.string()),
+  },
+  handler: async (ctx, { token, content, senderName }) => {
+    const jsrLinks = await ctx.db
+      .query("jsrLinks")
+      .withIndex("by_token", (q) => q.eq("token", token))
+      .collect();
+    const jsrLink = jsrLinks[0];
+    if (!jsrLink || !jsrLink.isActive)
+      throw new Error("Invalid or inactive JSR link");
+
+    await ctx.db.insert("jsrMessages", {
+      brandId: jsrLink.brandId,
+      jsrLinkId: jsrLink._id,
+      senderType: "client",
+      senderName,
+      content,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const sendManagerMessage = mutation({
+  args: {
+    brandId: v.id("brands"),
+    content: v.string(),
+  },
+  handler: async (ctx, { brandId, content }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const user = await ctx.db.get(userId);
+    if (!user || (user.role !== "admin" && user.role !== "manager"))
+      throw new Error("Not authorized");
+
+    const jsrLinks = await ctx.db
+      .query("jsrLinks")
+      .withIndex("by_brand", (q) => q.eq("brandId", brandId))
+      .collect();
+    const activeLink = jsrLinks.find((l) => l.isActive);
+    if (!activeLink) throw new Error("No active JSR link for this brand");
+
+    await ctx.db.insert("jsrMessages", {
+      brandId,
+      jsrLinkId: activeLink._id,
+      senderType: "manager",
+      senderName: user.name ?? user.email ?? "Manager",
+      senderId: userId,
+      content,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const listJsrMessages = query({
+  args: { brandId: v.id("brands") },
+  handler: async (ctx, { brandId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const user = await ctx.db.get(userId);
+    if (!user || (user.role !== "admin" && user.role !== "manager")) return [];
+
+    const messages = await ctx.db
+      .query("jsrMessages")
+      .withIndex("by_brand", (q) => q.eq("brandId", brandId))
+      .collect();
+
+    return messages.sort((a, b) => a.createdAt - b.createdAt);
+  },
+});
+
+// ─── JSR REMARKS (client feedback on deliverables) ──
+
+export const addJsrRemark = mutation({
+  args: {
+    token: v.string(),
+    deliverableId: v.id("deliverables"),
+    content: v.string(),
+    senderName: v.optional(v.string()),
+  },
+  handler: async (ctx, { token, deliverableId, content, senderName }) => {
+    const jsrLinks = await ctx.db
+      .query("jsrLinks")
+      .withIndex("by_token", (q) => q.eq("token", token))
+      .collect();
+    const jsrLink = jsrLinks[0];
+    if (!jsrLink || !jsrLink.isActive)
+      throw new Error("Invalid or inactive JSR link");
+
+    await ctx.db.insert("jsrRemarks", {
+      deliverableId,
+      brandId: jsrLink.brandId,
+      senderType: "client",
+      senderName,
+      content,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const addManagerRemark = mutation({
+  args: {
+    deliverableId: v.id("deliverables"),
+    brandId: v.id("brands"),
+    content: v.string(),
+  },
+  handler: async (ctx, { deliverableId, brandId, content }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const user = await ctx.db.get(userId);
+    if (!user || (user.role !== "admin" && user.role !== "manager"))
+      throw new Error("Not authorized");
+
+    await ctx.db.insert("jsrRemarks", {
+      deliverableId,
+      brandId,
+      senderType: "manager",
+      senderName: user.name ?? user.email ?? "Manager",
+      senderId: userId,
+      content,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const listJsrRemarks = query({
+  args: { brandId: v.id("brands") },
+  handler: async (ctx, { brandId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const user = await ctx.db.get(userId);
+    if (!user || (user.role !== "admin" && user.role !== "manager")) return [];
+
+    const remarks = await ctx.db
+      .query("jsrRemarks")
+      .withIndex("by_brand", (q) => q.eq("brandId", brandId))
+      .collect();
+
+    const deliverables = await ctx.db.query("deliverables").collect();
+    const tasks = await ctx.db.query("tasks").collect();
+
+    return remarks
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((r) => {
+        const deliverable = deliverables.find((d) => d._id === r.deliverableId);
+        const task = deliverable ? tasks.find((t) => t._id === deliverable.taskId) : null;
+        return {
+          ...r,
+          taskTitle: task?.title ?? "Unknown",
+        };
+      });
   },
 });

@@ -73,15 +73,21 @@ function monthLabel(month: string) {
 interface ContentCalendarViewProps {
   briefId: Id<"briefs">;
   isEditable: boolean;
+  brandId?: Id<"brands">;
 }
 
 export function ContentCalendarView({
   briefId,
   isEditable,
+  brandId,
 }: ContentCalendarViewProps) {
   const sheets = useQuery(api.contentCalendar.listSheets, { briefId });
   const allUsers = useQuery(api.users.listAllUsers, {});
   const user = useQuery(api.users.getCurrentUser);
+  const brandManagers = useQuery(
+    api.brands.getManagersForBrand,
+    brandId ? { brandId } : "skip"
+  );
   const createSheet = useMutation(api.contentCalendar.createSheet);
   const deleteSheetMut = useMutation(api.contentCalendar.deleteSheet);
   const createEntry = useMutation(api.contentCalendar.createCalendarEntry);
@@ -106,6 +112,7 @@ export function ContentCalendarView({
   const [newContentType, setNewContentType] = useState(CONTENT_TYPES[0]);
   const [newPostDate, setNewPostDate] = useState("");
   const [newAssignee, setNewAssignee] = useState<string>("");
+  const [newAssignor, setNewAssignor] = useState<string>("");
   const [newDeadline, setNewDeadline] = useState("");
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -122,6 +129,10 @@ export function ContentCalendarView({
   const employees = (allUsers ?? []).filter(
     (u: any) => u.role === "employee" || u.role === "manager"
   );
+  const managersAndAdmins = (allUsers ?? []).filter(
+    (u: any) => u.role === "admin" || u.role === "manager"
+  );
+  const defaultAssignor = brandManagers && brandManagers.length > 0 ? brandManagers[0] : "";
 
   async function handleCreateSheet(e: React.FormEvent) {
     e.preventDefault();
@@ -160,12 +171,14 @@ export function ContentCalendarView({
 
   async function handleAddEntry(e: React.FormEvent) {
     e.preventDefault();
-    if (!newAssignee || !currentSheetMonth) return;
+    if (!currentSheetMonth) return;
+    const assignor = newAssignor || (defaultAssignor as string) || undefined;
     try {
       await createEntry({
         briefId,
         title: newTitle,
-        assigneeId: newAssignee as Id<"users">,
+        ...(newAssignee ? { assigneeId: newAssignee as Id<"users"> } : {}),
+        ...(assignor ? { assignedBy: assignor as Id<"users"> } : {}),
         platform: newPlatform,
         contentType: newContentType,
         postDate: newPostDate,
@@ -176,6 +189,7 @@ export function ContentCalendarView({
       setNewTitle("");
       setNewPostDate("");
       setNewAssignee("");
+      setNewAssignor("");
       setNewDeadline("");
       setShowAddEntry(false);
       toast("success", "Entry added");
@@ -631,24 +645,43 @@ export function ContentCalendarView({
                   </select>
                 </div>
               </div>
-              <div>
-                <label className="font-medium text-[12px] text-[var(--text-secondary)] block mb-1">
-                  Assignee
-                </label>
-                <select
-                  value={newAssignee}
-                  onChange={(e) => setNewAssignee(e.target.value)}
-                  required
-                  className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
-                >
-                  <option value="">Select assignee</option>
-                  {employees.map((emp: any) => (
-                    <option key={emp._id} value={emp._id}>
-                      {emp.name ?? emp.email}
-                      {emp.designation ? ` — ${emp.designation}` : ""}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-medium text-[12px] text-[var(--text-secondary)] block mb-1">
+                    Assignor
+                  </label>
+                  <select
+                    value={newAssignor || (defaultAssignor as string) || ""}
+                    onChange={(e) => setNewAssignor(e.target.value)}
+                    className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                  >
+                    <option value="">Select assignor</option>
+                    {managersAndAdmins.map((u: any) => (
+                      <option key={u._id} value={u._id}>
+                        {u.name ?? u.email}
+                        {u.designation ? ` — ${u.designation}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-medium text-[12px] text-[var(--text-secondary)] block mb-1">
+                    Assignee
+                  </label>
+                  <select
+                    value={newAssignee}
+                    onChange={(e) => setNewAssignee(e.target.value)}
+                    className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                  >
+                    <option value="">Unassigned</option>
+                    {employees.map((emp: any) => (
+                      <option key={emp._id} value={emp._id}>
+                        {emp.name ?? emp.email}
+                        {emp.designation ? ` — ${emp.designation}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="font-medium text-[12px] text-[var(--text-secondary)] block mb-1">

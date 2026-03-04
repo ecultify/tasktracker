@@ -258,7 +258,7 @@ export default function BriefPage() {
       {/* Content Calendar briefs get a full-width spreadsheet layout */}
       {brief.briefType === "content_calendar" ? (
         <div className="flex-1 overflow-hidden">
-          <ContentCalendarView briefId={briefId} isEditable={!!isAdminOrManager} />
+          <ContentCalendarView briefId={briefId} isEditable={!!isAdminOrManager} brandId={brief?.brandId} />
         </div>
       ) : (
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-0 overflow-hidden">

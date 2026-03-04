@@ -60,18 +60,15 @@ export default function BrandDetailPage() {
 
   // JSR Links
   const jsrLinks = useQuery(api.jsr.listJsrLinks, { brandId });
-  const jsrClientTasks = useQuery(api.jsr.listClientTasks, { brandId });
   const generateJsrLink = useMutation(api.jsr.generateJsrLink);
   const deactivateJsrLink = useMutation(api.jsr.deactivateJsrLink);
-  const updateClientTaskDeadline = useMutation(api.jsr.updateClientTaskDeadline);
-  const updateClientTaskStatus = useMutation(api.jsr.updateClientTaskStatus);
-  const reassignClientTask = useMutation(api.jsr.reassignClientTask);
-  const deleteClientTask = useMutation(api.jsr.deleteClientTask);
-  const allUsers = useQuery(api.users.listAllUsers);
-  const [deletingClientTaskId, setDeletingClientTaskId] = useState<Id<"jsrClientTasks"> | null>(null);
+  const jsrMessages = useQuery(api.jsr.listJsrMessages, { brandId });
+  const sendManagerMessage = useMutation(api.jsr.sendManagerMessage);
   const [jsrExpanded, setJsrExpanded] = useState(true);
   const [deactivatingJsrId, setDeactivatingJsrId] = useState<Id<"jsrLinks"> | null>(null);
   const [deleteJsrTasks, setDeleteJsrTasks] = useState(false);
+  const [jsrMsgContent, setJsrMsgContent] = useState("");
+  const [sendingJsrMsg, setSendingJsrMsg] = useState(false);
 
   if (brand === undefined) {
     return (
@@ -779,120 +776,78 @@ export default function BrandDetailPage() {
                 </div>
               )}
 
-              {/* Client-Added Tasks */}
-              {(jsrClientTasks ?? []).length > 0 && (
-                <div>
-                  <p className="text-[12px] font-medium text-[var(--text-secondary)] mb-2">Client Requests</p>
-                  <div className="flex flex-col gap-2">
-                    {(jsrClientTasks ?? []).map((task: any) => {
-                      const isAccepted = task.status !== "pending_review" && task.status !== "declined";
-                      return (
-                        <div key={task._id} className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)]">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-medium text-[13px] text-[var(--text-primary)]">{task.title}</span>
-                            <div className="flex items-center gap-2">
-                              <select
-                                value={task.status}
-                                onChange={(e) => updateClientTaskStatus({ taskId: task._id, status: e.target.value as "pending_review" | "accepted" | "in_progress" | "completed" | "declined" })}
-                                className="bg-[var(--bg-input)] border border-[var(--border)] rounded text-[11px] px-2 py-0.5 text-[var(--text-primary)]"
-                              >
-                                <option value="pending_review">Pending Review</option>
-                                <option value="accepted">Accepted</option>
-                                <option value="in_progress">In Progress</option>
-                                <option value="completed">Completed</option>
-                                <option value="declined">Declined</option>
-                              </select>
-                              <button
-                                onClick={() => setDeletingClientTaskId(task._id)}
-                                className="text-[var(--text-muted)] hover:text-[var(--danger)] transition-colors"
-                                title="Delete client request"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                          {task.description && (
-                            <p className="text-[12px] text-[var(--text-secondary)] mb-1">{task.description}</p>
-                          )}
-                          <div className="flex items-center gap-4 text-[11px] text-[var(--text-muted)] flex-wrap">
-                            {task.clientName && <span>From: {task.clientName}</span>}
-                            {task.proposedDeadline && (
-                              <span>Proposed: {new Date(task.proposedDeadline).toLocaleDateString()}</span>
-                            )}
-                            <div className="flex items-center gap-1">
-                              <span>Deadline:</span>
-                              <input
-                                type="date"
-                                value={task.finalDeadline ? new Date(task.finalDeadline).toISOString().split("T")[0] : ""}
-                                onChange={(e) => {
-                                  const d = e.target.value ? new Date(e.target.value).getTime() : undefined;
-                                  if (d) updateClientTaskDeadline({ taskId: task._id, finalDeadline: d });
-                                }}
-                                className="bg-[var(--bg-input)] border border-[var(--border)] rounded text-[11px] px-1 py-0.5 text-[var(--text-primary)]"
-                              />
-                            </div>
-                          </div>
-                          {isAccepted && (
-                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-[var(--border-subtle)]">
-                              <span className="text-[11px] text-[var(--text-muted)]">Assignee:</span>
-                              <select
-                                value={task.assigneeId ?? ""}
-                                onChange={async (e) => {
-                                  if (e.target.value) {
-                                    try {
-                                      await reassignClientTask({ clientTaskId: task._id, assigneeId: e.target.value as any });
-                                      toast("success", "Task reassigned");
-                                    } catch (err: any) {
-                                      toast("error", err.message ?? "Failed to reassign");
-                                    }
-                                  }
-                                }}
-                                className="bg-[var(--bg-input)] border border-[var(--border)] rounded text-[11px] px-2 py-0.5 text-[var(--text-primary)] flex-1 max-w-[200px]"
-                              >
-                                <option value="">Select employee</option>
-                                {(allUsers ?? []).map((u: any) => (
-                                  <option key={u._id} value={u._id}>{u.name ?? u.email}{u.designation ? ` (${u.designation})` : ""}</option>
-                                ))}
-                              </select>
-                              {task.assigneeName && (
-                                <span className="text-[11px] font-medium text-[var(--text-primary)]">
-                                  {task.assigneeName}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+              {(jsrLinks ?? []).filter((l) => l.isActive).length === 0 && (
+                <p className="text-[13px] text-[var(--text-muted)]">No JSR links generated yet. Generate a link to share with the client.</p>
               )}
 
-              {(jsrLinks ?? []).filter((l) => l.isActive).length === 0 && (jsrClientTasks ?? []).length === 0 && (
-                <p className="text-[13px] text-[var(--text-muted)]">No JSR links generated yet. Generate a link to share with the client.</p>
+              {/* Client Messages */}
+              {(jsrLinks ?? []).filter((l) => l.isActive).length > 0 && (
+                <div className="mt-4 pt-4 border-t border-[var(--border)]">
+                  <p className="text-[12px] font-medium text-[var(--text-secondary)] mb-2">Client Messages</p>
+                  <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] overflow-hidden">
+                    <div className="max-h-[250px] overflow-y-auto p-3 space-y-2">
+                      {(jsrMessages ?? []).length === 0 && (
+                        <p className="text-[12px] text-[var(--text-muted)] text-center py-3">No messages yet.</p>
+                      )}
+                      {(jsrMessages ?? []).map((msg: any) => (
+                        <div
+                          key={msg._id}
+                          className={`flex ${msg.senderType === "manager" ? "justify-end" : "justify-start"}`}
+                        >
+                          <div
+                            className={`max-w-[80%] rounded-xl px-3 py-2 ${
+                              msg.senderType === "manager"
+                                ? "bg-[var(--accent-admin)] text-white rounded-br-sm"
+                                : "bg-[var(--bg-hover)] text-[var(--text-primary)] rounded-bl-sm"
+                            }`}
+                          >
+                            <p className={`text-[10px] font-semibold mb-0.5 ${msg.senderType === "manager" ? "text-white/70" : "text-[var(--text-muted)]"}`}>
+                              {msg.senderName || (msg.senderType === "client" ? "Client" : "You")}
+                            </p>
+                            <p className="text-[12px] leading-relaxed">{msg.content}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-t border-[var(--border-subtle)] p-2 flex items-center gap-2">
+                      <input
+                        value={jsrMsgContent}
+                        onChange={(e) => setJsrMsgContent(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey && jsrMsgContent.trim()) {
+                            e.preventDefault();
+                            setSendingJsrMsg(true);
+                            sendManagerMessage({ brandId, content: jsrMsgContent.trim() })
+                              .then(() => { setJsrMsgContent(""); toast("success", "Message sent"); })
+                              .catch(() => toast("error", "Failed to send"))
+                              .finally(() => setSendingJsrMsg(false));
+                          }
+                        }}
+                        placeholder="Reply to client..."
+                        className="flex-1 bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-1.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                      />
+                      <button
+                        onClick={() => {
+                          if (!jsrMsgContent.trim()) return;
+                          setSendingJsrMsg(true);
+                          sendManagerMessage({ brandId, content: jsrMsgContent.trim() })
+                            .then(() => { setJsrMsgContent(""); toast("success", "Message sent"); })
+                            .catch(() => toast("error", "Failed to send"))
+                            .finally(() => setSendingJsrMsg(false));
+                        }}
+                        disabled={sendingJsrMsg || !jsrMsgContent.trim()}
+                        className="shrink-0 px-3 py-1.5 rounded-lg bg-[var(--accent-admin)] text-white text-[12px] font-medium disabled:opacity-50 transition-colors"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
             </Card>
           )}
         </div>
       )}
-
-      {/* Delete Client Request Confirmation */}
-      <ConfirmModal
-        open={!!deletingClientTaskId}
-        title="Delete Client Request"
-        message="This will permanently delete this client request and its associated task. This cannot be undone."
-        confirmLabel="Delete"
-        confirmingLabel="Deleting..."
-        variant="danger"
-        onConfirm={async () => {
-          if (deletingClientTaskId) {
-            await deleteClientTask({ clientTaskId: deletingClientTaskId });
-            toast("success", "Client request deleted");
-          }
-          setDeletingClientTaskId(null);
-        }}
-        onCancel={() => setDeletingClientTaskId(null)}
-      />
 
       {/* Deactivate JSR Link Confirmation */}
       <ConfirmModal
