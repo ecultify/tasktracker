@@ -76,6 +76,7 @@ export default function ContentCalendarPage() {
   const [newPlatform, setNewPlatform] = useState(PLATFORMS[0]);
   const [newContentType, setNewContentType] = useState(CONTENT_TYPES[0]);
   const [newAssignee, setNewAssignee] = useState("");
+  const [newAssignor, setNewAssignor] = useState("");
   const [newDeadline, setNewDeadline] = useState("");
   const [newDescription, setNewDescription] = useState("");
 
@@ -101,10 +102,26 @@ export default function ContentCalendarPage() {
       : "skip"
   );
 
+  const brandManagers = useQuery(
+    api.brands.getManagersForBrand,
+    selectedBrandId ? { brandId: selectedBrandId as Id<"brands"> } : "skip"
+  );
+
   const employees = useMemo(
     () => (allUsers ?? []).filter((u: any) => u.role === "employee" || u.role === "manager"),
     [allUsers]
   );
+
+  const managersAndAdmins = useMemo(
+    () => (allUsers ?? []).filter((u: any) => u.role === "admin" || u.role === "manager"),
+    [allUsers]
+  );
+
+  const defaultAssignor = useMemo(() => {
+    if (!brandManagers?.length || !managersAndAdmins.length) return "";
+    const mgr = managersAndAdmins.find((u: any) => brandManagers.includes(u._id));
+    return mgr?._id ?? "";
+  }, [brandManagers, managersAndAdmins]);
 
   const isEditable = user?.role === "admin" || user?.role === "manager";
 
@@ -152,12 +169,14 @@ export default function ContentCalendarPage() {
   async function handleAddEntry(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedBrandId || !addingDate) return;
+    const assignor = newAssignor || defaultAssignor || undefined;
     try {
       await createEntry({
         brandId: selectedBrandId as Id<"brands">,
         title: newTitle,
         description: newDescription || undefined,
         ...(newAssignee ? { assigneeId: newAssignee as Id<"users"> } : {}),
+        ...(assignor ? { assignedBy: assignor as Id<"users"> } : {}),
         platform: newPlatform,
         contentType: newContentType,
         postDate: addingDate,
@@ -166,6 +185,7 @@ export default function ContentCalendarPage() {
       setNewTitle("");
       setNewDescription("");
       setNewAssignee("");
+      setNewAssignor("");
       setNewDeadline("");
       setAddingDate(null);
       toast("success", "Entry added");
@@ -407,6 +427,7 @@ export default function ContentCalendarPage() {
               task={selectedTask}
               isEditable={isEditable}
               employees={employees}
+              managersAndAdmins={managersAndAdmins}
               onClose={() => setSelectedTaskId(null)}
               updateTask={updateTask}
               updateTaskStatus={updateTaskStatus}
@@ -474,6 +495,21 @@ export default function ContentCalendarPage() {
                     {CONTENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
+              </div>
+              <div>
+                <label className="font-medium text-[12px] text-[var(--text-secondary)] block mb-1">Assignor</label>
+                <select
+                  value={newAssignor || defaultAssignor}
+                  onChange={(e) => setNewAssignor(e.target.value)}
+                  className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                >
+                  <option value="">Select assignor</option>
+                  {managersAndAdmins.map((u: any) => (
+                    <option key={u._id} value={u._id}>
+                      {u.name ?? u.email}{u.designation ? ` — ${u.designation}` : ""}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="font-medium text-[12px] text-[var(--text-secondary)] block mb-1">Assignee (optional)</label>
@@ -655,6 +691,7 @@ function TaskDetailSidebar({
   task,
   isEditable,
   employees,
+  managersAndAdmins,
   onClose,
   updateTask,
   updateTaskStatus,
@@ -664,6 +701,7 @@ function TaskDetailSidebar({
   task: any;
   isEditable: boolean;
   employees: any[];
+  managersAndAdmins: any[];
   onClose: () => void;
   updateTask: any;
   updateTaskStatus: any;
@@ -678,6 +716,7 @@ function TaskDetailSidebar({
     task.deadline ? new Date(task.deadline).toISOString().split("T")[0] : ""
   );
   const [editAssignee, setEditAssignee] = useState(task.assigneeId ?? "");
+  const [editAssignor, setEditAssignor] = useState(task.assignedBy ?? "");
   const [editDescription, setEditDescription] = useState(task.description ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -693,6 +732,7 @@ function TaskDetailSidebar({
       if (editPostDate !== (task.postDate ?? "")) updates.postDate = editPostDate;
       if (editDescription !== (task.description ?? "")) updates.description = editDescription;
       if (editAssignee && editAssignee !== task.assigneeId) updates.assigneeId = editAssignee;
+      if (editAssignor && editAssignor !== task.assignedBy) updates.assignedBy = editAssignor;
       if (editDeadline) {
         const ts = new Date(editDeadline + "T23:59:59").getTime();
         if (ts !== task.deadline) updates.deadline = ts;
@@ -798,6 +838,22 @@ function TaskDetailSidebar({
             <input type="date" value={editPostDate} onChange={(e) => setEditPostDate(e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]" />
           ) : (
             <p className="text-[13px] text-[var(--text-primary)]">{task.postDate ?? "—"}</p>
+          )}
+        </div>
+
+        <div>
+          <label className="font-medium text-[11px] text-[var(--text-muted)] uppercase tracking-wide block mb-1">Assignor</label>
+          {isEditable ? (
+            <select value={editAssignor} onChange={(e) => setEditAssignor(e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-2.5 py-1.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]">
+              <option value="">Select assignor</option>
+              {managersAndAdmins.map((u: any) => (
+                <option key={u._id} value={u._id}>
+                  {u.name ?? u.email}{u.designation ? ` — ${u.designation}` : ""}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-[13px] text-[var(--text-primary)]">{task.assignorName ?? "—"}</p>
           )}
         </div>
 

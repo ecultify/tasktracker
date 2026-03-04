@@ -90,10 +90,12 @@ export const listTasksByBrandMonth = query({
       })
       .map((task) => {
         const assignee = users.find((u) => u._id === task.assigneeId);
+        const assignor = users.find((u) => u._id === task.assignedBy);
         return {
           ...task,
           assigneeName: assignee?.name ?? assignee?.email ?? "Unknown",
           assigneeDesignation: assignee?.designation ?? "",
+          assignorName: assignor?.name ?? assignor?.email ?? "—",
         };
       });
   },
@@ -105,6 +107,7 @@ export const createEntryForBrand = mutation({
     title: v.string(),
     description: v.optional(v.string()),
     assigneeId: v.optional(v.id("users")),
+    assignedBy: v.optional(v.id("users")),
     platform: v.string(),
     contentType: v.string(),
     postDate: v.string(),
@@ -118,6 +121,8 @@ export const createEntryForBrand = mutation({
       throw new Error("Only admins and managers can create calendar entries");
 
     const briefId = await getOrCreateCalendarBrief(ctx, args.brandId, userId);
+    const assignor = args.assignedBy ?? userId;
+    const assignee = args.assigneeId ?? assignor;
 
     const month = args.postDate.substring(0, 7);
     const sheets = await ctx.db
@@ -150,8 +155,8 @@ export const createEntryForBrand = mutation({
       briefId,
       title: args.title,
       description: args.description,
-      assigneeId: args.assigneeId ?? userId,
-      assignedBy: userId,
+      assigneeId: assignee,
+      assignedBy: assignor,
       status: "pending",
       sortOrder: maxOrder + 1000,
       duration: "1d",
@@ -171,7 +176,7 @@ export const createEntryForBrand = mutation({
         message: `You were assigned: ${args.title}`,
         briefId,
         taskId,
-        triggeredBy: userId,
+        triggeredBy: assignor,
         read: false,
         createdAt: Date.now(),
       });

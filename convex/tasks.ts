@@ -144,6 +144,7 @@ export const updateTask = mutation({
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     assigneeId: v.optional(v.id("users")),
+    assignedBy: v.optional(v.id("users")),
     duration: v.optional(v.string()),
     durationMinutes: v.optional(v.number()),
     deadline: v.optional(v.number()),
@@ -170,6 +171,7 @@ export const updateTask = mutation({
     if (fields.durationMinutes !== undefined) updates.durationMinutes = fields.durationMinutes;
     if (fields.deadline !== undefined) updates.deadline = fields.deadline;
     if (clearDeadline) updates.deadline = undefined;
+    if (fields.assignedBy !== undefined) updates.assignedBy = fields.assignedBy;
     if (fields.platform !== undefined) updates.platform = fields.platform;
     if (fields.contentType !== undefined) updates.contentType = fields.contentType;
     if (fields.postDate !== undefined) updates.postDate = fields.postDate;
