@@ -2,13 +2,17 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { api } from "@/convex/_generated/api";
 import { Badge, Button, Card, Input, useToast } from "@/components/ui";
+import { Camera, X, Loader2 } from "lucide-react";
 
 export default function ProfilePage() {
   const user = useQuery(api.users.getCurrentUser);
   const updateProfile = useMutation(api.users.updateProfile);
+  const updateProfileImage = useMutation(api.users.updateProfileImage);
+  const removeProfileImage = useMutation(api.users.removeProfileImage);
+  const generateUploadUrl = useMutation(api.users.generateProfileUploadUrl);
   const { signIn } = useAuthActions();
   const [name, setName] = useState("");
   const [saved, setSaved] = useState(false);
@@ -17,6 +21,8 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [pwError, setPwError] = useState("");
   const [pwSuccess, setPwSuccess] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { toast } = useToast();
 
@@ -45,6 +51,38 @@ export default function ProfilePage() {
       toast("success", "Profile updated");
     } catch (err) {
       toast("error", err instanceof Error ? err.message : "Failed to update profile");
+    }
+  }
+
+  async function handlePhotoUpload(file: File) {
+    if (!file.type.startsWith("image/")) {
+      toast("error", "Please upload an image file");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast("error", "Image must be under 5MB");
+      return;
+    }
+    setUploadingPhoto(true);
+    try {
+      const url = await generateUploadUrl();
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": file.type }, body: file });
+      const { storageId } = await res.json();
+      await updateProfileImage({ storageId });
+      toast("success", "Profile photo updated");
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Failed to upload photo");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  async function handleRemovePhoto() {
+    try {
+      await removeProfileImage();
+      toast("success", "Profile photo removed");
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Failed to remove photo");
     }
   }
 
@@ -90,6 +128,75 @@ export default function ProfilePage() {
 
       <Card>
         <form onSubmit={handleSave} className="flex flex-col gap-4">
+          {/* Profile Photo */}
+          <div>
+            <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-3">
+              Profile Photo
+            </label>
+            <div className="flex items-center gap-4">
+              <div className="relative group">
+                {user.avatarUrl || user.image ? (
+                  <img
+                    src={user.avatarUrl || user.image}
+                    alt="Profile"
+                    className="w-20 h-20 rounded-full object-cover border-2 border-[var(--border)]"
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-full bg-[var(--accent-admin)] flex items-center justify-center border-2 border-[var(--border)]">
+                    <span className="text-white text-[24px] font-bold">
+                      {(user.name ?? user.email ?? "?").charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingPhoto}
+                  className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  {uploadingPhoto ? (
+                    <Loader2 className="h-5 w-5 text-white animate-spin" />
+                  ) : (
+                    <Camera className="h-5 w-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handlePhotoUpload(file);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingPhoto}
+                  className="text-[13px] font-medium text-[var(--accent-admin)] hover:underline disabled:opacity-50 text-left"
+                >
+                  {uploadingPhoto ? "Uploading..." : "Upload photo"}
+                </button>
+                {(user.avatarUrl || user.image) && (
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="text-[13px] font-medium text-[var(--danger)] hover:underline text-left"
+                  >
+                    Remove photo
+                  </button>
+                )}
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  JPG, PNG or GIF. Max 5MB.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <Input
             label="Name"
             value={displayName}

@@ -32,6 +32,7 @@ export const getComments = query({
         ...c,
         authorName: author?.name ?? author?.email ?? "Unknown",
         authorRole: author?.role ?? "employee",
+        authorAvatarUrl: author?.avatarUrl ?? author?.image ?? null,
         attachmentUrl,
       });
     }
@@ -91,6 +92,7 @@ export const getCommentsForBrief = query({
         ...c,
         authorName: author?.name ?? author?.email ?? "Unknown",
         authorRole: author?.role ?? "employee",
+        authorAvatarUrl: author?.avatarUrl ?? author?.image ?? null,
         taskName,
         taskId: c.parentType === "task" ? c.parentId : null,
         attachmentUrl,

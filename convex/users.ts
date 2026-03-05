@@ -199,3 +199,32 @@ export const updateProfile = mutation({
     await ctx.db.patch(userId, updates);
   },
 });
+
+export const updateProfileImage = mutation({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, { storageId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const url = await ctx.storage.getUrl(storageId);
+    if (!url) throw new Error("Failed to get image URL");
+    await ctx.db.patch(userId, { avatarUrl: url, image: url });
+  },
+});
+
+export const removeProfileImage = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    await ctx.db.patch(userId, { avatarUrl: undefined, image: undefined });
+  },
+});
+
+export const generateProfileUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    return await ctx.storage.generateUploadUrl();
+  },
+});

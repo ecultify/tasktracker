@@ -18,6 +18,7 @@ export const getContacts = query({
       _id: string;
       name: string;
       role: string;
+      avatarUrl: string | null;
       lastMessage: string | null;
       lastMessageTime: number | null;
       unreadCount: number;
@@ -75,6 +76,7 @@ export const getContacts = query({
         _id: u._id,
         name: u.name ?? u.email ?? "Unknown",
         role: u.role ?? "employee",
+        avatarUrl: u.avatarUrl ?? u.image ?? null,
         lastMessage,
         lastMessageTime,
         unreadCount,

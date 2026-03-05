@@ -160,13 +160,17 @@ export default function MessagesPage() {
                   }`}
                 >
                   {/* Avatar */}
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0 ${
-                    hasUnread
-                      ? "bg-[var(--accent-admin)] text-white"
-                      : "bg-[var(--bg-hover)] text-[var(--text-secondary)]"
-                  }`}>
-                    {contact.name.charAt(0).toUpperCase()}
-                  </div>
+                  {contact.avatarUrl ? (
+                    <img src={contact.avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+                  ) : (
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0 ${
+                      hasUnread
+                        ? "bg-[var(--accent-admin)] text-white"
+                        : "bg-[var(--bg-hover)] text-[var(--text-secondary)]"
+                    }`}>
+                      {contact.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
@@ -208,9 +212,13 @@ export default function MessagesPage() {
           <>
             {/* Chat Header */}
             <div className="px-4 py-3 border-b border-[var(--border)] bg-white flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-[var(--bg-hover)] flex items-center justify-center text-[11px] font-bold text-[var(--text-secondary)]">
-                {selectedContact.name.charAt(0).toUpperCase()}
-              </div>
+              {selectedContact.avatarUrl ? (
+                <img src={selectedContact.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-[var(--bg-hover)] flex items-center justify-center text-[11px] font-bold text-[var(--text-secondary)]">
+                  {selectedContact.name.charAt(0).toUpperCase()}
+                </div>
+              )}
               <div>
                 <p className="text-[13px] font-semibold text-[var(--text-primary)]">{selectedContact.name}</p>
                 <p className="text-[10px] text-[var(--text-muted)] capitalize">{selectedContact.role}</p>

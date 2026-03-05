@@ -445,12 +445,20 @@ export function CommentThread({
               {/* Avatar */}
               <div className="shrink-0 w-6">
                 {showAvatar && (
-                  <div
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
-                    style={{ backgroundColor: roleColor }}
-                  >
-                    {c.authorName.charAt(0).toUpperCase()}
-                  </div>
+                  (c as any).authorAvatarUrl ? (
+                    <img
+                      src={(c as any).authorAvatarUrl}
+                      alt=""
+                      className="w-6 h-6 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                      style={{ backgroundColor: roleColor }}
+                    >
+                      {c.authorName.charAt(0).toUpperCase()}
+                    </div>
+                  )
                 )}
               </div>
 
