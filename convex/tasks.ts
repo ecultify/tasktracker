@@ -377,10 +377,9 @@ export const deleteTask = mutation({
     if (!userId) throw new Error("Not authenticated");
     const task = await ctx.db.get(taskId);
     if (!task) throw new Error("Task not found");
-    const brief = await ctx.db.get(task.briefId);
     const user = await ctx.db.get(userId);
-    if (!user || (user.role !== "admin" && brief?.assignedManagerId !== userId)) {
-      throw new Error("Not authorized");
+    if (!user || (user.role !== "admin" && user.role !== "manager")) {
+      throw new Error("Only admins and managers can delete tasks");
     }
     await ctx.db.delete(taskId);
     await ctx.db.insert("activityLog", {

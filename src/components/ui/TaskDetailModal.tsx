@@ -25,6 +25,7 @@ import {
   Image as ImageIcon,
   Eye,
   Pencil,
+  Trash2,
 } from "lucide-react";
 import { FilePreviewModal } from "./FilePreviewModal";
 
@@ -89,6 +90,7 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
 
   const generateUploadUrl = useMutation(api.attachments.generateUploadUrl);
   const updateTask = useMutation(api.tasks.updateTask);
+  const deleteTaskMutation = useMutation(api.tasks.deleteTask);
   const briefId = detail?.task?.briefId;
   const graphData = useQuery(
     api.briefs.getBriefGraphData,
@@ -124,6 +126,8 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
   const [deliverableFiles, setDeliverableFiles] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [previewFile, setPreviewFile] = useState<{ name: string; url: string } | null>(null);
 
   // Escape to close
@@ -182,6 +186,18 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
       });
     } finally {
       setIsUpdatingStatus(false);
+    }
+  }
+
+  async function handleDeleteTask() {
+    if (isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await deleteTaskMutation({ taskId: taskId as Id<"tasks"> });
+      onClose();
+    } catch {
+      setIsDeleting(false);
+      setConfirmDelete(false);
     }
   }
 
@@ -306,6 +322,15 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
                 <Pencil className="h-4 w-4" />
               </button>
             )}
+            {isAdminOrManager && (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-red-50 transition-colors"
+                title="Delete task"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
@@ -317,6 +342,31 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto">
+          {/* Delete confirmation */}
+          {confirmDelete && (
+            <div className="px-5 py-3 bg-red-50 border-b border-red-200 flex items-center justify-between gap-3">
+              <p className="text-[13px] text-[var(--danger)] font-medium">
+                Delete this task permanently?
+              </p>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={handleDeleteTask}
+                  disabled={isDeleting}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white bg-[var(--danger)] hover:bg-red-700 transition-colors disabled:opacity-60"
+                >
+                  {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                  {isDeleting ? "Deleting..." : "Delete"}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-3 py-1.5 rounded-lg text-[12px] font-medium text-[var(--text-secondary)] border border-[var(--border)] bg-white hover:bg-[var(--bg-hover)] transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Status & Meta */}
           <div className="p-5 space-y-4">
             {/* Status bar */}
