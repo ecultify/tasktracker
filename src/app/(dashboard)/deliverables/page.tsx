@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Card, Badge, Button } from "@/components/ui";
-import { Check, X, MessageSquare, ExternalLink, Paperclip, FileText, Image as ImageIcon, Eye } from "lucide-react";
+import { Check, X, MessageSquare, ExternalLink, Paperclip, FileText, Image as ImageIcon, Eye, Trash2 } from "lucide-react";
 import { FilePreviewModal } from "@/components/ui/FilePreviewModal";
 import type { Id } from "@/convex/_generated/dataModel";
 
@@ -14,6 +14,7 @@ export default function DeliverablesPage() {
   const approveDeliverable = useMutation(api.approvals.approveDeliverable);
   const rejectDeliverable = useMutation(api.approvals.rejectDeliverable);
   const submitDeliverable = useMutation(api.approvals.submitDeliverable);
+  const deleteDeliverableMutation = useMutation(api.approvals.deleteDeliverable);
 
   const [rejectNote, setRejectNote] = useState<Record<string, string>>({});
   const [showRejectForm, setShowRejectForm] = useState<string | null>(null);
@@ -196,12 +197,26 @@ export default function DeliverablesPage() {
                     })}
                   </p>
                 </div>
-                <span
-                  className="shrink-0 px-2 py-0.5 rounded-md text-[10px] font-medium"
-                  style={{ backgroundColor: style.bg, color: style.text }}
-                >
-                  {style.label}
-                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span
+                    className="px-2 py-0.5 rounded-md text-[10px] font-medium"
+                    style={{ backgroundColor: style.bg, color: style.text }}
+                  >
+                    {style.label}
+                  </span>
+                  {role === "admin" && (
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm("Delete this deliverable permanently?")) return;
+                        await deleteDeliverableMutation({ deliverableId: d._id as Id<"deliverables"> });
+                      }}
+                      className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-red-50 transition-colors"
+                      title="Delete deliverable"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               <p className="text-[12px] text-[var(--text-secondary)] mb-2">{d.message}</p>
