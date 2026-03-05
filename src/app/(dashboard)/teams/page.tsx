@@ -19,6 +19,8 @@ export default function TeamsPage() {
     .filter((u) => u.role === "admin" || u.role === "manager")
     .map((u) => ({ value: u._id, label: (u.name ?? u.email ?? "Unknown") as string }));
   const createTeam = useMutation(api.teams.createTeam);
+  const updateTeam = useMutation(api.teams.updateTeam);
+  const deleteTeam = useMutation(api.teams.deleteTeam);
   const addUserToTeam = useMutation(api.teams.addUserToTeam);
   const removeUserFromTeam = useMutation(api.teams.removeUserFromTeam);
 
@@ -33,6 +35,7 @@ export default function TeamsPage() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [addMemberUserId, setAddMemberUserId] = useState<Id<"users"> | "">("");
   const [removingMemberId, setRemovingMemberId] = useState<Id<"users"> | null>(null);
+  const [confirmDeleteTeam, setConfirmDeleteTeam] = useState(false);
   const { toast } = useToast();
 
   const selectedTeam = teams?.find((t) => t._id === selectedTeamId) ?? null;
@@ -97,6 +100,28 @@ export default function TeamsPage() {
       toast("error", err instanceof Error ? err.message : "Failed to remove member");
     }
     setRemovingMemberId(null);
+  }
+
+  async function handleChangeTeamLead(newLeadId: Id<"users">) {
+    if (!selectedTeamId) return;
+    try {
+      await updateTeam({ teamId: selectedTeamId, leadId: newLeadId });
+      toast("success", "Team lead updated");
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Failed to update team lead");
+    }
+  }
+
+  async function handleDeleteTeam() {
+    if (!selectedTeamId) return;
+    try {
+      await deleteTeam({ teamId: selectedTeamId });
+      closePanel();
+      toast("success", "Team deleted");
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Failed to delete team");
+    }
+    setConfirmDeleteTeam(false);
   }
 
   async function handleCreateTeam(e: React.FormEvent) {
@@ -257,12 +282,23 @@ export default function TeamsPage() {
                 {selectedTeam?.name ?? "Loading..."}
               </h2>
             </div>
-            <button
-              onClick={closePanel}
-              className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-            >
-              <X size={18} />
-            </button>
+            <div className="flex items-center gap-1">
+              {isAdmin && (
+                <button
+                  onClick={() => setConfirmDeleteTeam(true)}
+                  className="p-1.5 rounded-lg hover:bg-red-50 transition-colors text-[var(--text-secondary)] hover:text-[var(--danger)]"
+                  title="Delete team"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
+              <button
+                onClick={closePanel}
+                className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              >
+                <X size={18} />
+              </button>
+            </div>
           </div>
 
           {/* Panel Body */}
@@ -287,9 +323,21 @@ export default function TeamsPage() {
                     <p className="text-[12px] font-medium text-[var(--text-secondary)] uppercase tracking-wider mb-1.5">
                       Lead
                     </p>
-                    <p className="text-[14px] text-[var(--text-primary)] font-medium">
-                      {selectedTeam.leadName}
-                    </p>
+                    {isAdmin ? (
+                      <select
+                        value={selectedTeam.leadId}
+                        onChange={(e) => handleChangeTeamLead(e.target.value as Id<"users">)}
+                        className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                      >
+                        {leadOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="text-[14px] text-[var(--text-primary)] font-medium">
+                        {selectedTeam.leadName}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <p className="text-[12px] font-medium text-[var(--text-secondary)] uppercase tracking-wider mb-1.5">
@@ -434,6 +482,17 @@ export default function TeamsPage() {
           if (removingMemberId) await handleRemoveMember(removingMemberId);
         }}
         onCancel={() => setRemovingMemberId(null)}
+      />
+
+      <ConfirmModal
+        open={confirmDeleteTeam}
+        title="Delete Team"
+        message={`Are you sure you want to delete "${selectedTeam?.name}"? This will remove all member associations. Teams linked to active briefs cannot be deleted.`}
+        confirmLabel="Delete"
+        confirmingLabel="Deleting..."
+        variant="danger"
+        onConfirm={handleDeleteTeam}
+        onCancel={() => setConfirmDeleteTeam(false)}
       />
     </div>
   );
