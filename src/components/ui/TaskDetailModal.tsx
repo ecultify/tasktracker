@@ -91,6 +91,7 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
   const generateUploadUrl = useMutation(api.attachments.generateUploadUrl);
   const updateTask = useMutation(api.tasks.updateTask);
   const deleteTaskMutation = useMutation(api.tasks.deleteTask);
+  const deleteDeliverable = useMutation(api.approvals.deleteDeliverable);
   const briefId = detail?.task?.briefId;
   const graphData = useQuery(
     api.briefs.getBriefGraphData,
@@ -562,12 +563,26 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
                           day: "numeric",
                         })}
                       </span>
-                      <span
-                        className="shrink-0 px-2 py-0.5 rounded-md text-[10px] font-medium"
-                        style={{ backgroundColor: ds.bg, color: ds.color }}
-                      >
-                        {ds.label}
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span
+                          className="px-2 py-0.5 rounded-md text-[10px] font-medium"
+                          style={{ backgroundColor: ds.bg, color: ds.color }}
+                        >
+                          {ds.label}
+                        </span>
+                        {user?.role === "admin" && (
+                          <button
+                            onClick={async () => {
+                              if (!window.confirm("Delete this deliverable?")) return;
+                              await deleteDeliverable({ deliverableId: d._id });
+                            }}
+                            className="p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-red-50 transition-colors"
+                            title="Delete deliverable"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <p className="text-[12px] text-[var(--text-primary)] leading-relaxed">
                       {d.message}

@@ -192,3 +192,26 @@ export const rejectDeliverable = mutation({
     });
   },
 });
+
+export const deleteDeliverable = mutation({
+  args: { deliverableId: v.id("deliverables") },
+  handler: async (ctx, { deliverableId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const user = await ctx.db.get(userId);
+    if (!user || user.role !== "admin") {
+      throw new Error("Only admins can delete deliverables");
+    }
+
+    const deliverable = await ctx.db.get(deliverableId);
+    if (!deliverable) throw new Error("Deliverable not found");
+
+    if (deliverable.fileIds) {
+      for (const fileId of deliverable.fileIds) {
+        await ctx.storage.delete(fileId);
+      }
+    }
+
+    await ctx.db.delete(deliverableId);
+  },
+});
