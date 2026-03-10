@@ -425,6 +425,94 @@ export const bulkUpdateStatus = mutation({
   },
 });
 
+// ─── SUB-TASKS ────────────────────────────────
+export const createSubTask = mutation({
+  args: {
+    parentTaskId: v.id("tasks"),
+    assigneeId: v.id("users"),
+    description: v.string(),
+    duration: v.string(),
+    durationMinutes: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+
+    const parentTask = await ctx.db.get(args.parentTaskId);
+    if (!parentTask) throw new Error("Parent task not found");
+
+    // Verify current user is a team lead of the assignee's team
+    const assigneeTeams = await ctx.db
+      .query("userTeams")
+      .withIndex("by_user", (q) => q.eq("userId", args.assigneeId))
+      .collect();
+    const teams = await Promise.all(assigneeTeams.map((ut) => ctx.db.get(ut.teamId)));
+    const isTeamLead = teams.some((t) => t && t.leadId === userId);
+
+    const user = await ctx.db.get(userId);
+    if (!isTeamLead && user?.role !== "admin") {
+      throw new Error("Only team leads or admins can create sub-tasks");
+    }
+
+    const existingTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_assignee_sort", (q) => q.eq("assigneeId", args.assigneeId))
+      .collect();
+    const maxOrder = existingTasks.length
+      ? Math.max(...existingTasks.map((t) => t.sortOrder))
+      : 0;
+
+    const taskId = await ctx.db.insert("tasks", {
+      briefId: parentTask.briefId,
+      title: `${parentTask.title} — Sub-task`,
+      description: args.description,
+      assigneeId: args.assigneeId,
+      assignedBy: userId,
+      status: "pending",
+      sortOrder: maxOrder + 1000,
+      duration: args.duration,
+      durationMinutes: args.durationMinutes,
+      parentTaskId: args.parentTaskId,
+    });
+
+    await ctx.db.insert("notifications", {
+      recipientId: args.assigneeId,
+      type: "task_assigned",
+      title: "Sub-task assigned",
+      message: `You were added as a helper on "${parentTask.title}"`,
+      briefId: parentTask.briefId,
+      taskId,
+      triggeredBy: userId,
+      read: false,
+      createdAt: Date.now(),
+    });
+
+    return taskId;
+  },
+});
+
+export const getSubTasks = query({
+  args: { parentTaskId: v.id("tasks") },
+  handler: async (ctx, { parentTaskId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+
+    const subTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_parent", (q) => q.eq("parentTaskId", parentTaskId))
+      .collect();
+
+    const users = await ctx.db.query("users").collect();
+    return subTasks.map((t) => {
+      const assignee = users.find((u) => u._id === t.assigneeId);
+      return {
+        ...t,
+        assigneeName: assignee?.name ?? assignee?.email ?? "Unknown",
+      };
+    });
+  },
+});
+
 export const updateTaskBlockers = mutation({
   args: {
     taskId: v.id("tasks"),

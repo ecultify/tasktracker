@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Badge, Button, Card, TaskDetailModal } from "@/components/ui";
-import { X, BarChart3, ArrowRight } from "lucide-react";
+import { X, BarChart3, ArrowRight, ChevronDown, ChevronRight, ClipboardCheck, Briefcase } from "lucide-react";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -174,19 +174,42 @@ export default function DashboardPage() {
   if (role === "admin") {
     const teams = useQuery(api.teams.listTeams);
     const teamLeadOverview = useQuery(api.teams.getTeamLeadBriefOverview);
+    const pendingApprovalCount = useQuery(api.approvals.getTeamLeadPendingCount);
+    const myBrandIds = useQuery(api.brands.getMyManagedBrandIds);
     const employeeCount = (allUsers ?? []).filter(
       (u) => u.role === "employee"
     ).length;
+    const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
+
+    function toggleTeam(teamId: string) {
+      setExpandedTeams((prev) => {
+        const next = new Set(prev);
+        next.has(teamId) ? next.delete(teamId) : next.add(teamId);
+        return next;
+      });
+    }
 
     return (
       <div className="p-4 sm:p-6 lg:p-8">
-        <div className="mb-6 sm:mb-8">
-          <h1 className="font-bold text-[20px] sm:text-[24px] text-[var(--text-primary)] tracking-tight">
-            {greeting}, {displayName}
-          </h1>
-          <p className="mt-1 text-[13px] sm:text-[14px] text-[var(--text-secondary)]">
-            Here&apos;s your operational overview
-          </p>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 sm:mb-8">
+          <div>
+            <h1 className="font-bold text-[20px] sm:text-[24px] text-[var(--text-primary)] tracking-tight">
+              {greeting}, {displayName}
+            </h1>
+            <p className="mt-1 text-[13px] sm:text-[14px] text-[var(--text-secondary)]">
+              Here&apos;s your operational overview
+            </p>
+          </div>
+          {(myBrandIds ?? []).length > 0 && (
+            <button
+              onClick={() => router.push("/brands?filter=mine")}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--accent-admin)] text-white text-[13px] font-semibold hover:opacity-90 transition-opacity shadow-sm"
+            >
+              <Briefcase className="h-4 w-4" />
+              My Brands
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
@@ -262,75 +285,136 @@ export default function DashboardPage() {
         </Card>
 
         {/* Team Lead Overview */}
-        {(teamLeadOverview ?? []).length > 0 && (
+        {((teamLeadOverview ?? []).length > 0 || (pendingApprovalCount ?? 0) > 0) && (
           <div className="mb-6 sm:mb-8">
-            <h2 className="font-semibold text-[14px] text-[var(--text-secondary)] mb-4">
-              My Teams — Member Brief Assignments
-            </h2>
-            <div className="flex flex-col gap-4">
-              {(teamLeadOverview ?? []).map((teamData: any) => (
-                <Card key={teamData.team._id} className="p-0 overflow-hidden">
-                  <div
-                    className="px-4 py-3 flex items-center gap-2 border-b border-[var(--border)]"
-                    style={{ borderLeft: `3px solid ${teamData.team.color}` }}
-                  >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-[14px] text-[var(--text-secondary)]">
+                My Teams
+              </h2>
+              {(pendingApprovalCount ?? 0) > 0 && (
+                <button
+                  onClick={() => router.push("/deliverables")}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors"
+                >
+                  <ClipboardCheck className="h-3.5 w-3.5 text-amber-600" />
+                  <span className="text-[12px] font-semibold text-amber-700">
+                    {pendingApprovalCount} Approval{pendingApprovalCount !== 1 ? "s" : ""} Pending
+                  </span>
+                  <ArrowRight className="h-3 w-3 text-amber-500" />
+                </button>
+              )}
+            </div>
+            <div className="flex flex-col gap-3">
+              {(teamLeadOverview ?? []).map((teamData: any) => {
+                const isExpanded = expandedTeams.has(teamData.team._id);
+                const totalTasks = teamData.members.reduce(
+                  (acc: number, m: any) => acc + m.briefs.reduce((a: number, b: any) => a + (b.taskCount ?? 0), 0), 0
+                );
+                const doneTasks = teamData.members.reduce(
+                  (acc: number, m: any) => acc + m.briefs.reduce((a: number, b: any) => a + (b.doneCount ?? 0), 0), 0
+                );
+                const progress = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
+                return (
+                  <Card key={teamData.team._id} className="p-0 overflow-hidden">
                     <div
-                      className="w-3 h-3 rounded-sm shrink-0"
-                      style={{ backgroundColor: teamData.team.color }}
-                    />
-                    <h3 className="font-semibold text-[14px] text-[var(--text-primary)]">
-                      {teamData.team.name}
-                    </h3>
-                    <span className="text-[12px] text-[var(--text-muted)] ml-auto">
-                      {teamData.members.length} member{teamData.members.length !== 1 ? "s" : ""} on briefs
-                    </span>
-                  </div>
-                  <div className="divide-y divide-[var(--border-subtle)]">
-                    {teamData.members.map((memberData: any) => (
-                      <div key={memberData.user._id} className="px-4 py-3">
-                        <div className="flex items-center gap-2 mb-2">
-                          {memberData.user.avatarUrl ? (
-                            <img
-                              src={memberData.user.avatarUrl}
-                              alt=""
-                              className="w-6 h-6 rounded-full object-cover"
+                      className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
+                      style={{ borderLeft: `4px solid ${teamData.team.color}` }}
+                      onClick={() => toggleTeam(teamData.team._id)}
+                    >
+                      {isExpanded ? (
+                        <ChevronDown className="h-4 w-4 text-[var(--text-muted)] shrink-0" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-[var(--text-muted)] shrink-0" />
+                      )}
+                      <div
+                        className="w-3 h-3 rounded-sm shrink-0"
+                        style={{ backgroundColor: teamData.team.color }}
+                      />
+                      <h3 className="font-semibold text-[14px] text-[var(--text-primary)] flex-1">
+                        {teamData.team.name}
+                      </h3>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-16 h-1.5 rounded-full bg-[var(--border-subtle)] overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-[var(--accent-employee)]"
+                              style={{ width: `${progress}%` }}
                             />
-                          ) : (
-                            <div className="w-6 h-6 rounded-full bg-[var(--accent-employee-dim)] flex items-center justify-center text-[10px] font-bold text-[var(--accent-employee)]">
-                              {(memberData.user.name ?? memberData.user.email ?? "?").charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                          <span className="font-medium text-[13px] text-[var(--text-primary)]">
-                            {memberData.user.name ?? memberData.user.email}
+                          </div>
+                          <span className="text-[10px] text-[var(--text-muted)] tabular-nums">
+                            {doneTasks}/{totalTasks}
                           </span>
-                          {memberData.user.designation && (
-                            <span className="text-[11px] text-[var(--text-muted)]">
-                              — {memberData.user.designation}
-                            </span>
-                          )}
                         </div>
-                        <div className="flex flex-wrap gap-2 ml-8">
-                          {memberData.briefs.map((briefInfo: any) => (
-                            <button
-                              key={briefInfo._id}
-                              onClick={() => router.push(`/brief/${briefInfo._id}`)}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] bg-[var(--bg-hover)] hover:bg-[var(--border)] transition-colors text-left"
-                            >
-                              <span className="font-medium text-[var(--text-primary)] truncate max-w-[180px]">
-                                {briefInfo.title}
-                              </span>
-                              <span className="text-[var(--text-muted)] tabular-nums shrink-0">
-                                {briefInfo.doneCount}/{briefInfo.taskCount}
-                              </span>
-                              <Badge variant="neutral">{briefInfo.status}</Badge>
-                            </button>
-                          ))}
-                        </div>
+                        <span className="text-[11px] text-[var(--text-muted)]">
+                          {teamData.members.length} member{teamData.members.length !== 1 ? "s" : ""}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                </Card>
-              ))}
+                    </div>
+
+                    {isExpanded && (
+                      <div className="border-t border-[var(--border)]">
+                        {teamData.members.map((memberData: any, midx: number) => {
+                          const memberDone = memberData.briefs.reduce((a: number, b: any) => a + (b.doneCount ?? 0), 0);
+                          const memberTotal = memberData.briefs.reduce((a: number, b: any) => a + (b.taskCount ?? 0), 0);
+                          const memberPct = memberTotal > 0 ? Math.round((memberDone / memberTotal) * 100) : 0;
+
+                          return (
+                            <div
+                              key={memberData.user._id}
+                              className={`px-4 py-3 ${midx !== teamData.members.length - 1 ? "border-b border-[var(--border-subtle)]" : ""}`}
+                            >
+                              <div className="flex items-center gap-2.5 mb-2">
+                                {memberData.user.avatarUrl ? (
+                                  <img src={memberData.user.avatarUrl} alt="" className="w-7 h-7 rounded-full object-cover" />
+                                ) : (
+                                  <div className="w-7 h-7 rounded-full bg-[var(--accent-employee-dim)] flex items-center justify-center text-[10px] font-bold text-[var(--accent-employee)]">
+                                    {(memberData.user.name ?? memberData.user.email ?? "?").charAt(0).toUpperCase()}
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-[13px] text-[var(--text-primary)]">
+                                      {memberData.user.name ?? memberData.user.email}
+                                    </span>
+                                    {memberData.user.designation && (
+                                      <span className="text-[10px] text-[var(--text-muted)]">{memberData.user.designation}</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <div className="w-20 h-1 rounded-full bg-[var(--border-subtle)] overflow-hidden">
+                                      <div className="h-full rounded-full bg-[var(--accent-employee)]" style={{ width: `${memberPct}%` }} />
+                                    </div>
+                                    <span className="text-[10px] text-[var(--text-muted)] tabular-nums">
+                                      {memberDone}/{memberTotal} tasks
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5 ml-9">
+                                {memberData.briefs.map((briefInfo: any) => (
+                                  <button
+                                    key={briefInfo._id}
+                                    onClick={() => router.push(`/brief/${briefInfo._id}`)}
+                                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] bg-[var(--bg-hover)] hover:bg-[var(--border)] transition-colors text-left"
+                                  >
+                                    <span className="font-medium text-[var(--text-primary)] truncate max-w-[160px]">
+                                      {briefInfo.title}
+                                    </span>
+                                    <span className="text-[var(--text-muted)] tabular-nums shrink-0">
+                                      {briefInfo.doneCount}/{briefInfo.taskCount}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}

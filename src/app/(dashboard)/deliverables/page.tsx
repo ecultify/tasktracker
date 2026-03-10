@@ -4,17 +4,29 @@ import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Card, Badge, Button, ConfirmModal } from "@/components/ui";
-import { Check, X, MessageSquare, ExternalLink, Paperclip, FileText, Image as ImageIcon, Eye, Trash2 } from "lucide-react";
+import {
+  Check, X, MessageSquare, ExternalLink, Paperclip, FileText,
+  Image as ImageIcon, Eye, Trash2, ArrowRight, ShieldCheck
+} from "lucide-react";
 import { FilePreviewModal } from "@/components/ui/FilePreviewModal";
 import type { Id } from "@/convex/_generated/dataModel";
+
+type TabType = "my" | "team_approvals" | "brand_deliverables";
 
 export default function DeliverablesPage() {
   const user = useQuery(api.users.getCurrentUser);
   const deliverables = useQuery(api.approvals.listDeliverables, {});
+  const teamLeadPending = useQuery(api.approvals.listTeamLeadPendingApprovals);
+  const managerDeliverables = useQuery(api.approvals.listManagerDeliverables);
+  const myBrandIds = useQuery(api.brands.getMyManagedBrandIds);
+
   const approveDeliverable = useMutation(api.approvals.approveDeliverable);
   const rejectDeliverable = useMutation(api.approvals.rejectDeliverable);
   const submitDeliverable = useMutation(api.approvals.submitDeliverable);
   const deleteDeliverableMutation = useMutation(api.approvals.deleteDeliverable);
+  const teamLeadApproveMut = useMutation(api.approvals.teamLeadApprove);
+  const teamLeadRejectMut = useMutation(api.approvals.teamLeadReject);
+  const passToManagerMut = useMutation(api.approvals.passToManager);
 
   const [rejectNote, setRejectNote] = useState<Record<string, string>>({});
   const [showRejectForm, setShowRejectForm] = useState<string | null>(null);
@@ -23,7 +35,6 @@ export default function DeliverablesPage() {
 
   const generateUploadUrl = useMutation(api.attachments.generateUploadUrl);
 
-  // Submit form state
   const [showSubmit, setShowSubmit] = useState(false);
   const [submitTaskId, setSubmitTaskId] = useState("");
   const [submitMessage, setSubmitMessage] = useState("");
@@ -32,8 +43,32 @@ export default function DeliverablesPage() {
 
   const role = user?.role ?? "employee";
   const isAdmin = role === "admin";
+  const isTeamLead = (teamLeadPending ?? []).length >= 0 && teamLeadPending !== undefined;
+  const hasTeamLeadRole = (teamLeadPending ?? []).length > 0 || teamLeadPending !== undefined;
+  const isBrandManager = (myBrandIds ?? []).length > 0;
 
-  // For employees, show their tasks to submit deliverables
+  const availableTabs: { id: TabType; label: string; count?: number }[] = [
+    { id: "my", label: "My Deliverables" },
+  ];
+
+  if (hasTeamLeadRole && role !== "employee") {
+    availableTabs.push({
+      id: "team_approvals",
+      label: "Team Approvals",
+      count: (teamLeadPending ?? []).length,
+    });
+  }
+
+  if (isBrandManager) {
+    availableTabs.push({
+      id: "brand_deliverables",
+      label: "Brand Deliverables",
+      count: (managerDeliverables ?? []).length,
+    });
+  }
+
+  const [activeTab, setActiveTab] = useState<TabType>("my");
+
   const myTasks = useQuery(
     api.tasks.listTasksForUser,
     user ? { userId: user._id } : "skip"
@@ -45,17 +80,31 @@ export default function DeliverablesPage() {
   }) ?? [];
 
   async function handleApprove(deliverableId: string) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await approveDeliverable({ deliverableId: deliverableId as any });
   }
 
   async function handleReject(deliverableId: string) {
     const note = rejectNote[deliverableId];
     if (!note?.trim()) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await rejectDeliverable({ deliverableId: deliverableId as any, note: note.trim() });
     setShowRejectForm(null);
     setRejectNote({});
+  }
+
+  async function handleTeamLeadApprove(deliverableId: string) {
+    await teamLeadApproveMut({ deliverableId: deliverableId as any });
+  }
+
+  async function handleTeamLeadReject(deliverableId: string) {
+    const note = rejectNote[deliverableId];
+    if (!note?.trim()) return;
+    await teamLeadRejectMut({ deliverableId: deliverableId as any, note: note.trim() });
+    setShowRejectForm(null);
+    setRejectNote({});
+  }
+
+  async function handlePassToManager(deliverableId: string) {
+    await passToManagerMut({ deliverableId: deliverableId as any });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -74,7 +123,6 @@ export default function DeliverablesPage() {
       }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await submitDeliverable({
       taskId: submitTaskId as any,
       message: submitMessage.trim(),
@@ -94,6 +142,63 @@ export default function DeliverablesPage() {
     rejected: { bg: "var(--danger-dim)", text: "var(--danger)", label: "Changes Requested" },
   };
 
+  const TL_STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> = {
+    pending: { bg: "#FEF3C7", text: "#D97706", label: "TL Review Pending" },
+    approved: { bg: "#D1FAE5", text: "#059669", label: "TL Approved" },
+    changes_requested: { bg: "var(--danger-dim)", text: "var(--danger)", label: "TL Requested Changes" },
+    rejected: { bg: "var(--danger-dim)", text: "var(--danger)", label: "TL Rejected" },
+  };
+
+  function renderFiles(files: { name: string; url: string }[]) {
+    if (!files?.length) return null;
+    return (
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {files.map((file, idx) => {
+          const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file.name);
+          return (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => setPreviewFile(file)}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--bg-hover)] text-[11px] text-[var(--text-secondary)] hover:text-[var(--accent-admin)] transition-colors"
+            >
+              {isImage ? <ImageIcon className="h-3 w-3 shrink-0" /> : <FileText className="h-3 w-3 shrink-0" />}
+              <span className="max-w-[150px] truncate">{file.name}</span>
+              <Eye className="h-3 w-3 shrink-0" />
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function renderRejectForm(id: string, onReject: (id: string) => Promise<void>) {
+    if (showRejectForm !== id) return null;
+    return (
+      <div className="flex items-center gap-2 flex-1">
+        <input
+          value={rejectNote[id] ?? ""}
+          onChange={(e) => setRejectNote({ ...rejectNote, [id]: e.target.value })}
+          placeholder="Reason for changes..."
+          className="flex-1 px-2.5 py-1.5 rounded-lg border border-[var(--border)] text-[12px] focus:outline-none focus:ring-1 focus:ring-[var(--danger)]"
+          autoFocus
+        />
+        <button
+          onClick={() => onReject(id)}
+          className="px-3 py-1.5 rounded-lg bg-[var(--danger)] text-white text-[12px] font-medium hover:opacity-90"
+        >
+          Send
+        </button>
+        <button
+          onClick={() => setShowRejectForm(null)}
+          className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 sm:p-6 space-y-5">
       <div className="flex items-center justify-between">
@@ -106,6 +211,30 @@ export default function DeliverablesPage() {
           </Button>
         )}
       </div>
+
+      {/* Tabs */}
+      {availableTabs.length > 1 && (
+        <div className="flex gap-1 p-1 rounded-xl bg-[var(--bg-hover)]">
+          {availableTabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-medium transition-all ${
+                activeTab === tab.id
+                  ? "bg-white text-[var(--text-primary)] shadow-sm"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              {tab.label}
+              {tab.count !== undefined && tab.count > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--accent-admin)] text-white text-[10px] font-bold">
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Submit form for employees */}
       {showSubmit && (
@@ -178,12 +307,132 @@ export default function DeliverablesPage() {
         </Card>
       )}
 
-      {/* Deliverables list */}
-      <div className="space-y-3">
-        {filteredDeliverables.map((d) => {
-          const status = d.status ?? "pending";
-          const style = STATUS_STYLE[status] ?? STATUS_STYLE.pending;
-          return (
+      {/* Tab: My Deliverables */}
+      {activeTab === "my" && (
+        <div className="space-y-3">
+          {filteredDeliverables.map((d) => {
+            const status = d.status ?? "pending";
+            const style = STATUS_STYLE[status] ?? STATUS_STYLE.pending;
+            const tlStatus = (d as any).teamLeadStatus as string | undefined;
+            const tlStyle = tlStatus ? (TL_STATUS_STYLE[tlStatus] ?? null) : null;
+
+            return (
+              <Card key={d._id} className="p-4">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-[13px] text-[var(--text-primary)]">
+                      {d.taskTitle}
+                    </p>
+                    <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                      {d.briefTitle} &middot; by {d.submitterName} &middot;{" "}
+                      {new Date(d.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {tlStyle && (
+                      <span
+                        className="px-2 py-0.5 rounded-md text-[10px] font-medium"
+                        style={{ backgroundColor: tlStyle.bg, color: tlStyle.text }}
+                      >
+                        {tlStyle.label}
+                      </span>
+                    )}
+                    <span
+                      className="px-2 py-0.5 rounded-md text-[10px] font-medium"
+                      style={{ backgroundColor: style.bg, color: style.text }}
+                    >
+                      {style.label}
+                    </span>
+                    {isAdmin && (
+                      <button
+                        onClick={() => setDeletingDeliverableId(d._id)}
+                        className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-red-50 transition-colors"
+                        title="Delete deliverable"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <p className="text-[12px] text-[var(--text-secondary)] mb-2">{d.message}</p>
+
+                {d.link && (
+                  <a href={d.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-admin)] hover:underline mb-2">
+                    <ExternalLink className="h-3 w-3" />
+                    {d.link}
+                  </a>
+                )}
+
+                {renderFiles((d as any).files ?? [])}
+
+                {d.reviewNote && (
+                  <div className="flex items-start gap-1.5 mt-2 px-2.5 py-2 rounded-lg bg-[var(--bg-primary)] border border-[var(--border-subtle)]">
+                    <MessageSquare className="h-3 w-3 text-[var(--text-muted)] mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[11px] font-medium text-[var(--text-secondary)]">
+                        {d.reviewerName ?? "Reviewer"}:
+                      </p>
+                      <p className="text-[11px] text-[var(--text-secondary)]">{d.reviewNote}</p>
+                    </div>
+                  </div>
+                )}
+
+                {(d as any).teamLeadReviewNote && (d as any).teamLeadReviewerName && (
+                  <div className="flex items-start gap-1.5 mt-2 px-2.5 py-2 rounded-lg bg-amber-50 border border-amber-200">
+                    <ShieldCheck className="h-3 w-3 text-amber-600 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[11px] font-medium text-amber-700">
+                        {(d as any).teamLeadReviewerName} (Team Lead):
+                      </p>
+                      <p className="text-[11px] text-amber-700">{(d as any).teamLeadReviewNote}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Admin actions: final approve/reject for pending deliverables */}
+                {isAdmin && status === "pending" && (
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[var(--border-subtle)]">
+                    <button
+                      onClick={() => handleApprove(d._id)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[var(--accent-employee)] text-white text-[12px] font-medium hover:opacity-90 transition-opacity"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Approve
+                    </button>
+                    {showRejectForm === d._id ? (
+                      renderRejectForm(d._id, handleReject)
+                    ) : (
+                      <button
+                        onClick={() => setShowRejectForm(d._id)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[var(--danger)] text-[var(--danger)] text-[12px] font-medium hover:bg-[var(--danger-dim)] transition-colors"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Request Changes
+                      </button>
+                    )}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+          {filteredDeliverables.length === 0 && (
+            <Card className="p-6 text-center">
+              <p className="text-[13px] text-[var(--text-muted)]">No deliverables yet.</p>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Team Approvals (Team Lead) */}
+      {activeTab === "team_approvals" && (
+        <div className="space-y-3">
+          {(teamLeadPending ?? []).length === 0 && (
+            <Card className="p-6 text-center">
+              <p className="text-[13px] text-[var(--text-muted)]">No pending approvals from your team.</p>
+            </Card>
+          )}
+          {(teamLeadPending ?? []).map((d: any) => (
             <Card key={d._id} className="p-4">
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="flex-1 min-w-0">
@@ -191,133 +440,151 @@ export default function DeliverablesPage() {
                     {d.taskTitle}
                   </p>
                   <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
-                    {d.briefTitle} &middot; by {d.submitterName} &middot;{" "}
-                    {new Date(d.submittedAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })}
+                    {d.briefTitle} &middot; {d.brandName} &middot; by{" "}
+                    <span className="font-semibold">{d.submitterName}</span> &middot;{" "}
+                    {new Date(d.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                   </p>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span
-                    className="px-2 py-0.5 rounded-md text-[10px] font-medium"
-                    style={{ backgroundColor: style.bg, color: style.text }}
-                  >
-                    {style.label}
-                  </span>
-                  {role === "admin" && (
-                    <button
-                      onClick={() => setDeletingDeliverableId(d._id)}
-                      className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-red-50 transition-colors"
-                      title="Delete deliverable"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-50 text-amber-700 shrink-0">
+                  Awaiting Review
+                </span>
               </div>
 
               <p className="text-[12px] text-[var(--text-secondary)] mb-2">{d.message}</p>
 
               {d.link && (
-                <a
-                  href={d.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-admin)] hover:underline mb-2"
-                >
+                <a href={d.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-admin)] hover:underline mb-2">
                   <ExternalLink className="h-3 w-3" />
                   {d.link}
                 </a>
               )}
 
-              {(d as any).files?.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {(d as any).files.map((file: { name: string; url: string }, idx: number) => {
-                    const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file.name);
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setPreviewFile(file)}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--bg-hover)] text-[11px] text-[var(--text-secondary)] hover:text-[var(--accent-admin)] transition-colors"
-                      >
-                        {isImage ? <ImageIcon className="h-3 w-3 shrink-0" /> : <FileText className="h-3 w-3 shrink-0" />}
-                        <span className="max-w-[150px] truncate">{file.name}</span>
-                        <Eye className="h-3 w-3 shrink-0" />
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              {renderFiles(d.files ?? [])}
 
-              {d.reviewNote && (
-                <div className="flex items-start gap-1.5 mt-2 px-2.5 py-2 rounded-lg bg-[var(--bg-primary)] border border-[var(--border-subtle)]">
-                  <MessageSquare className="h-3 w-3 text-[var(--text-muted)] mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-[11px] font-medium text-[var(--text-secondary)]">
-                      {d.reviewerName ?? "Reviewer"}:
-                    </p>
-                    <p className="text-[11px] text-[var(--text-secondary)]">{d.reviewNote}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Actions for managers/admins */}
-              {isAdmin && status === "pending" && (
-                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[var(--border-subtle)]">
-                  <button
-                    onClick={() => handleApprove(d._id)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[var(--accent-employee)] text-white text-[12px] font-medium hover:opacity-90 transition-opacity"
-                  >
-                    <Check className="h-3.5 w-3.5" />
-                    Approve
-                  </button>
-                  {showRejectForm === d._id ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <input
-                        value={rejectNote[d._id] ?? ""}
-                        onChange={(e) => setRejectNote({ ...rejectNote, [d._id]: e.target.value })}
-                        placeholder="Reason for changes..."
-                        className="flex-1 px-2.5 py-1.5 rounded-lg border border-[var(--border)] text-[12px] focus:outline-none focus:ring-1 focus:ring-[var(--danger)]"
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => handleReject(d._id)}
-                        className="px-3 py-1.5 rounded-lg bg-[var(--danger)] text-white text-[12px] font-medium hover:opacity-90"
-                      >
-                        Send
-                      </button>
-                      <button
-                        onClick={() => setShowRejectForm(null)}
-                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : (
+              <div className="flex items-center flex-wrap gap-2 mt-3 pt-3 border-t border-[var(--border-subtle)]">
+                {d.teamLeadStatus === "pending" && (
+                  <>
                     <button
-                      onClick={() => setShowRejectForm(d._id)}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[var(--danger)] text-[var(--danger)] text-[12px] font-medium hover:bg-[var(--danger-dim)] transition-colors"
+                      onClick={() => handleTeamLeadApprove(d._id)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[var(--accent-employee)] text-white text-[12px] font-medium hover:opacity-90 transition-opacity"
                     >
-                      <X className="h-3.5 w-3.5" />
-                      Request Changes
+                      <Check className="h-3.5 w-3.5" />
+                      Approve
                     </button>
-                  )}
+                    {showRejectForm === d._id ? (
+                      renderRejectForm(d._id, handleTeamLeadReject)
+                    ) : (
+                      <button
+                        onClick={() => setShowRejectForm(d._id)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[var(--danger)] text-[var(--danger)] text-[12px] font-medium hover:bg-[var(--danger-dim)] transition-colors"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Request Changes
+                      </button>
+                    )}
+                  </>
+                )}
+
+                {d.teamLeadStatus === "approved" && !d.passedToManagerAt && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-[var(--accent-employee)] font-medium">Approved by you</span>
+                    {(d.brandManagers ?? []).map((mgr: any) => (
+                      <button
+                        key={mgr._id}
+                        onClick={() => handlePassToManager(d._id)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent-admin)] text-white text-[12px] font-medium hover:opacity-90 transition-opacity"
+                      >
+                        <ArrowRight className="h-3.5 w-3.5" />
+                        Pass to {mgr.name}
+                      </button>
+                    ))}
+                    {(d.brandManagers ?? []).length === 0 && (
+                      <span className="text-[11px] text-[var(--text-muted)]">No brand manager assigned</span>
+                    )}
+                  </div>
+                )}
+
+                {d.passedToManagerAt && (
+                  <span className="text-[11px] text-[var(--text-muted)] font-medium">
+                    Passed to brand manager
+                  </span>
+                )}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Tab: Brand Deliverables (Manager) */}
+      {activeTab === "brand_deliverables" && (
+        <div className="space-y-3">
+          {(managerDeliverables ?? []).length === 0 && (
+            <Card className="p-6 text-center">
+              <p className="text-[13px] text-[var(--text-muted)]">No deliverables pending your review.</p>
+            </Card>
+          )}
+          {(managerDeliverables ?? []).map((d: any) => (
+            <Card key={d._id} className="p-4">
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-[13px] text-[var(--text-primary)]">
+                    {d.taskTitle}
+                  </p>
+                  <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                    {d.briefTitle} &middot; {d.brandName} &middot; by{" "}
+                    <span className="font-semibold">{d.submitterName}</span> &middot;{" "}
+                    {new Date(d.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </p>
+                </div>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-50 text-blue-700 shrink-0">
+                  Awaiting Your Approval
+                </span>
+              </div>
+
+              {d.teamLeadReviewerName && (
+                <div className="flex items-center gap-1.5 mb-2 px-2 py-1 rounded-md bg-green-50 border border-green-200 w-fit">
+                  <ShieldCheck className="h-3 w-3 text-green-600" />
+                  <span className="text-[11px] text-green-700 font-medium">
+                    Approved by {d.teamLeadReviewerName}{d.teamName ? ` of ${d.teamName}` : ""}
+                  </span>
                 </div>
               )}
-            </Card>
-          );
-        })}
 
-        {filteredDeliverables.length === 0 && (
-          <Card className="p-6 text-center">
-            <p className="text-[13px] text-[var(--text-muted)]">
-              No deliverables yet.
-            </p>
-          </Card>
-        )}
-      </div>
+              <p className="text-[12px] text-[var(--text-secondary)] mb-2">{d.message}</p>
+
+              {d.link && (
+                <a href={d.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-admin)] hover:underline mb-2">
+                  <ExternalLink className="h-3 w-3" />
+                  {d.link}
+                </a>
+              )}
+
+              {renderFiles(d.files ?? [])}
+
+              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[var(--border-subtle)]">
+                <button
+                  onClick={() => handleApprove(d._id)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[var(--accent-employee)] text-white text-[12px] font-medium hover:opacity-90 transition-opacity"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  Approve (Final)
+                </button>
+                {showRejectForm === d._id ? (
+                  renderRejectForm(d._id, handleReject)
+                ) : (
+                  <button
+                    onClick={() => setShowRejectForm(d._id)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[var(--danger)] text-[var(--danger)] text-[12px] font-medium hover:bg-[var(--danger-dim)] transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Request Changes
+                  </button>
+                )}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {previewFile && (
         <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />

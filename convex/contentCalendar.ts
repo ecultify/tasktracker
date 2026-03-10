@@ -328,6 +328,25 @@ export const listTasksForSheet = query({
   },
 });
 
+export const updateReferenceLinks = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    referenceLinks: v.array(v.string()),
+  },
+  handler: async (ctx, { taskId, referenceLinks }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const user = await ctx.db.get(userId);
+    if (!user || user.role !== "admin")
+      throw new Error("Only admins can manage reference links");
+
+    const task = await ctx.db.get(taskId);
+    if (!task) throw new Error("Task not found");
+
+    await ctx.db.patch(taskId, { referenceLinks });
+  },
+});
+
 export const createCalendarEntry = mutation({
   args: {
     briefId: v.id("briefs"),

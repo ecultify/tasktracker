@@ -291,7 +291,7 @@ export default function BriefsPage() {
                 <div className="border-t border-[var(--border)] overflow-x-auto">
                   <Table>
                     <TableHeader>
-                      <TableHead>Priority</TableHead>
+                      <TableHead>S.No</TableHead>
                       <TableHead>Title</TableHead>
                       <TableHead className="hidden md:table-cell">Manager</TableHead>
                       <TableHead className="hidden lg:table-cell">Teams</TableHead>
@@ -302,7 +302,7 @@ export default function BriefsPage() {
                       {isAdmin && <TableHead className="w-10"></TableHead>}
                     </TableHeader>
                     <TableBody>
-                      {folder.briefs.map((brief) => {
+                      {folder.briefs.map((brief, index) => {
                         const dl = brief.deadline;
                         const overdue = dl && brief.status !== "completed" && brief.status !== "archived" && isOverdue(dl);
                         const daysLeft = dl ? daysUntil(dl) : null;
@@ -313,7 +313,7 @@ export default function BriefsPage() {
                             onClick={() => router.push(`/brief/${brief._id}`)}
                           >
                             <TableCell>
-                              {brief.globalPriority}
+                              {index + 1}
                             </TableCell>
                             <TableCell className="font-semibold">
                               {brief.title}

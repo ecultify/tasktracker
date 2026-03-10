@@ -95,6 +95,10 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
   const reassignTaskMutation = useMutation(api.tasks.reassignTask);
   const deleteTaskMutation = useMutation(api.tasks.deleteTask);
   const deleteDeliverable = useMutation(api.approvals.deleteDeliverable);
+
+  const subTasks = useQuery(api.tasks.getSubTasks, { parentTaskId: taskId as Id<"tasks"> });
+  const createSubTask = useMutation(api.tasks.createSubTask);
+  const allUsers = useQuery(api.users.listAllUsers);
   const briefId = detail?.task?.briefId;
   const graphData = useQuery(
     api.briefs.getBriefGraphData,
@@ -138,6 +142,13 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
   const [showReassign, setShowReassign] = useState(false);
   const [reassignTarget, setReassignTarget] = useState("");
   const [isReassigning, setIsReassigning] = useState(false);
+
+  const [showAddHelper, setShowAddHelper] = useState(false);
+  const [helperAssignee, setHelperAssignee] = useState("");
+  const [helperDesc, setHelperDesc] = useState("");
+  const [helperDurVal, setHelperDurVal] = useState("2");
+  const [helperDurUnit, setHelperDurUnit] = useState<"m" | "h" | "d">("h");
+  const [isCreatingSubTask, setIsCreatingSubTask] = useState(false);
 
   // Escape to close
   const handleKey = useCallback(
@@ -524,6 +535,149 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
               </div>
             )}
           </div>
+
+          {/* Sub-Tasks Section */}
+          {((subTasks ?? []).length > 0 || (isAdmin || (() => {
+            if (!allUsers || !user) return false;
+            const taskData = detail?.task;
+            if (!taskData) return false;
+            return false;
+          })())) && (
+            <div className="p-5 space-y-3 border-t border-[var(--border)]">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-[12px] text-[var(--text-secondary)] uppercase tracking-wide">
+                  Sub-Tasks ({subTasks?.length ?? 0})
+                </h4>
+                {(isAdmin || (() => {
+                  return false;
+                })()) && task.status !== "done" && (
+                  <button
+                    onClick={() => setShowAddHelper(!showAddHelper)}
+                    className="flex items-center gap-1 text-[11px] font-medium text-[var(--accent-admin)] hover:underline"
+                  >
+                    <UserPlus className="h-3 w-3" />
+                    Add Helper
+                  </button>
+                )}
+              </div>
+
+              {showAddHelper && (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!helperAssignee || !helperDesc.trim() || isCreatingSubTask) return;
+                    setIsCreatingSubTask(true);
+                    try {
+                      const dur = `${helperDurVal}${helperDurUnit}`;
+                      const durMin = parseDuration(dur);
+                      await createSubTask({
+                        parentTaskId: taskId as Id<"tasks">,
+                        assigneeId: helperAssignee as Id<"users">,
+                        description: helperDesc.trim(),
+                        duration: dur,
+                        durationMinutes: durMin,
+                      });
+                      setHelperAssignee("");
+                      setHelperDesc("");
+                      setHelperDurVal("2");
+                      setHelperDurUnit("h");
+                      setShowAddHelper(false);
+                    } finally {
+                      setIsCreatingSubTask(false);
+                    }
+                  }}
+                  className="space-y-2 p-3 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]"
+                >
+                  <select
+                    value={helperAssignee}
+                    onChange={(e) => setHelperAssignee(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-lg border border-[var(--border)] bg-white text-[12px] focus:outline-none focus:ring-1 focus:ring-[var(--accent-admin)]"
+                    required
+                  >
+                    <option value="">Select team member...</option>
+                    {(allUsers ?? [])
+                      .filter((u) => u._id !== task.assigneeId && u.role === "employee")
+                      .map((u) => (
+                        <option key={u._id} value={u._id}>
+                          {(u.name ?? u.email ?? "Unknown") as string}
+                        </option>
+                      ))}
+                  </select>
+                  <textarea
+                    value={helperDesc}
+                    onChange={(e) => setHelperDesc(e.target.value)}
+                    placeholder="Describe the sub-task..."
+                    className="w-full px-3 py-1.5 rounded-lg border border-[var(--border)] bg-white text-[12px] min-h-[50px] focus:outline-none focus:ring-1 focus:ring-[var(--accent-admin)]"
+                    required
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      value={helperDurVal}
+                      onChange={(e) => setHelperDurVal(e.target.value)}
+                      className="w-16 px-2 py-1.5 rounded-lg border border-[var(--border)] bg-white text-[12px] focus:outline-none focus:ring-1 focus:ring-[var(--accent-admin)]"
+                      required
+                    />
+                    <select
+                      value={helperDurUnit}
+                      onChange={(e) => setHelperDurUnit(e.target.value as "m" | "h" | "d")}
+                      className="px-2 py-1.5 rounded-lg border border-[var(--border)] bg-white text-[12px] focus:outline-none focus:ring-1 focus:ring-[var(--accent-admin)]"
+                    >
+                      <option value="m">Min</option>
+                      <option value="h">Hrs</option>
+                      <option value="d">Days</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={isCreatingSubTask}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white bg-[var(--accent-admin)] hover:bg-[#c4684d] transition-colors disabled:opacity-50"
+                    >
+                      {isCreatingSubTask ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3" />}
+                      {isCreatingSubTask ? "Adding..." : "Add Helper"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddHelper(false)}
+                      className="px-3 py-1.5 rounded-lg text-[12px] font-medium text-[var(--text-secondary)] border border-[var(--border)] hover:bg-[var(--bg-hover)] transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              <div className="space-y-1.5">
+                {(subTasks ?? []).map((st: any) => {
+                  const stStatus = STATUS_CONFIG[st.status] ?? STATUS_CONFIG.pending;
+                  return (
+                    <div key={st._id} className="flex items-center gap-2 p-2.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)]">
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: stStatus.color }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] text-[var(--text-primary)] leading-snug">
+                          {st.description ?? st.title}
+                        </p>
+                        <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                          {st.assigneeName} &middot; {st.duration}
+                        </p>
+                      </div>
+                      <span
+                        className="px-2 py-0.5 rounded-md text-[10px] font-medium shrink-0"
+                        style={{ color: stStatus.color, backgroundColor: stStatus.bg }}
+                      >
+                        {stStatus.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="border-t border-[var(--border)]" />
 

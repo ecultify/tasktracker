@@ -1,11 +1,11 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import { Badge, Button, Card, Input, Textarea, useToast } from "@/components/ui";
-import { Plus, X, Tag } from "lucide-react";
+import { Plus, X, Tag, Briefcase } from "lucide-react";
 
 const BRAND_COLORS = [
   "#d97757", "#6a9bcc", "#788c5d", "#b07cc6", "#cc8f5e",
@@ -14,16 +14,30 @@ const BRAND_COLORS = [
 
 export default function BrandsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const brands = useQuery(api.brands.listBrands);
+  const myBrandIds = useQuery(api.brands.getMyManagedBrandIds);
   const createBrand = useMutation(api.brands.createBrand);
   const user = useQuery(api.users.getCurrentUser);
   const [showModal, setShowModal] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState(BRAND_COLORS[0]);
+  const [filterMine, setFilterMine] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("filter") === "mine") {
+      setFilterMine(true);
+    }
+  }, [searchParams]);
 
   const isAdmin = user?.role === "admin";
   const { toast } = useToast();
+
+  const myBrandIdSet = new Set(myBrandIds ?? []);
+  const filteredBrands = filterMine && brands
+    ? brands.filter((b) => myBrandIdSet.has(b._id))
+    : brands;
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -59,16 +73,31 @@ export default function BrandsPage() {
             Manage your client brands and projects
           </p>
         </div>
-        {isAdmin && (
-          <Button variant="primary" onClick={() => setShowModal(true)}>
-            <Plus className="h-4 w-4 mr-1.5" />
-            Create Brand
-          </Button>
-        )}
+        <div className="flex items-center gap-3">
+          {(myBrandIds ?? []).length > 0 && (
+            <button
+              onClick={() => setFilterMine((p) => !p)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold transition-colors border ${
+                filterMine
+                  ? "bg-[var(--accent-admin)] text-white border-[var(--accent-admin)]"
+                  : "bg-white text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-hover)]"
+              }`}
+            >
+              <Briefcase className="h-3.5 w-3.5" />
+              My Brands
+            </button>
+          )}
+          {isAdmin && (
+            <Button variant="primary" onClick={() => setShowModal(true)}>
+              <Plus className="h-4 w-4 mr-1.5" />
+              Create Brand
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {brands.map((brand) => (
+        {(filteredBrands ?? []).map((brand) => (
           <Card
             key={brand._id}
             onClick={() => router.push(`/brands/${brand._id}`)}
@@ -120,7 +149,7 @@ export default function BrandsPage() {
             )}
           </Card>
         ))}
-        {brands.length === 0 && (
+        {(filteredBrands ?? []).length === 0 && (
           <p className="text-[13px] text-[var(--text-muted)] col-span-3">
             No brands yet.{isAdmin ? " Create one to get started." : ""}
           </p>

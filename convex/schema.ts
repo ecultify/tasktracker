@@ -110,11 +110,14 @@ export default defineSchema({
     contentType: v.optional(v.string()),
     postDate: v.optional(v.string()),
     assignedAt: v.optional(v.number()),
+    parentTaskId: v.optional(v.id("tasks")),
+    referenceLinks: v.optional(v.array(v.string())),
   })
     .index("by_brief", ["briefId"])
     .index("by_assignee", ["assigneeId"])
     .index("by_assignee_sort", ["assigneeId", "sortOrder"])
-    .index("by_brief_assignee", ["briefId", "assigneeId"]),
+    .index("by_brief_assignee", ["briefId", "assigneeId"])
+    .index("by_parent", ["parentTaskId"]),
 
   // ─── DELIVERABLES ────────────────────────────
   deliverables: defineTable({
@@ -135,6 +138,12 @@ export default defineSchema({
     reviewedAt: v.optional(v.number()),
     fileIds: v.optional(v.array(v.id("_storage"))),
     fileNames: v.optional(v.array(v.string())),
+    teamLeadStatus: v.optional(v.union(v.literal("pending"), v.literal("approved"), v.literal("changes_requested"), v.literal("rejected"))),
+    teamLeadReviewedBy: v.optional(v.id("users")),
+    teamLeadReviewNote: v.optional(v.string()),
+    teamLeadReviewedAt: v.optional(v.number()),
+    passedToManagerBy: v.optional(v.id("users")),
+    passedToManagerAt: v.optional(v.number()),
   })
     .index("by_task", ["taskId"])
     .index("by_submittedBy", ["submittedBy"]),

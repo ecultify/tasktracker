@@ -15,6 +15,18 @@ export const getManagersForBrand = query({
   },
 });
 
+export const getMyManagedBrandIds = query({
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const bms = await ctx.db
+      .query("brandManagers")
+      .withIndex("by_manager", (q) => q.eq("managerId", userId))
+      .collect();
+    return bms.map((bm) => bm.brandId);
+  },
+});
+
 // List all brands (admin sees all, employees see none)
 export const listBrands = query({
   args: {},
