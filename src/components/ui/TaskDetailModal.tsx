@@ -98,7 +98,6 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
 
   const subTasks = useQuery(api.tasks.getSubTasks, { parentTaskId: taskId as Id<"tasks"> });
   const createSubTask = useMutation(api.tasks.createSubTask);
-  const allUsers = useQuery(api.users.listAllUsers);
   const briefId = detail?.task?.briefId;
   const graphData = useQuery(
     api.briefs.getBriefGraphData,
@@ -537,20 +536,13 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
           </div>
 
           {/* Sub-Tasks Section */}
-          {((subTasks ?? []).length > 0 || (isAdmin || (() => {
-            if (!allUsers || !user) return false;
-            const taskData = detail?.task;
-            if (!taskData) return false;
-            return false;
-          })())) && (
+          {((subTasks ?? []).length > 0 || isAdmin) && (
             <div className="p-5 space-y-3 border-t border-[var(--border)]">
               <div className="flex items-center justify-between">
                 <h4 className="font-semibold text-[12px] text-[var(--text-secondary)] uppercase tracking-wide">
                   Sub-Tasks ({subTasks?.length ?? 0})
                 </h4>
-                {(isAdmin || (() => {
-                  return false;
-                })()) && task.status !== "done" && (
+                {isAdmin && task.status !== "done" && (
                   <button
                     onClick={() => setShowAddHelper(!showAddHelper)}
                     className="flex items-center gap-1 text-[11px] font-medium text-[var(--accent-admin)] hover:underline"
@@ -595,8 +587,8 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
                     required
                   >
                     <option value="">Select team member...</option>
-                    {(allUsers ?? [])
-                      .filter((u) => u._id !== task.assigneeId && u.role === "employee")
+                    {editAllMembers
+                      .filter((u) => u._id !== task.assigneeId)
                       .map((u) => (
                         <option key={u._id} value={u._id}>
                           {(u.name ?? u.email ?? "Unknown") as string}
