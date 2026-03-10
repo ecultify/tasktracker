@@ -27,6 +27,7 @@ import type * as dm from "../dm.js";
 import type * as http from "../http.js";
 import type * as jsr from "../jsr.js";
 import type * as notifications from "../notifications.js";
+import type * as passwordChange from "../passwordChange.js";
 import type * as reminders from "../reminders.js";
 import type * as schedule from "../schedule.js";
 import type * as search from "../search.js";
@@ -64,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   jsr: typeof jsr;
   notifications: typeof notifications;
+  passwordChange: typeof passwordChange;
   reminders: typeof reminders;
   schedule: typeof schedule;
   search: typeof search;

@@ -1,7 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
-import { useAuthActions } from "@convex-dev/auth/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useState, useRef } from "react";
 import { api } from "@/convex/_generated/api";
 import { Badge, Button, Card, Input, useToast } from "@/components/ui";
@@ -13,14 +12,16 @@ export default function ProfilePage() {
   const updateProfileImage = useMutation(api.users.updateProfileImage);
   const removeProfileImage = useMutation(api.users.removeProfileImage);
   const generateUploadUrl = useMutation(api.users.generateProfileUploadUrl);
-  const { signIn } = useAuthActions();
+  const changePasswordAction = useAction(api.passwordChange.changePassword);
   const [name, setName] = useState("");
   const [saved, setSaved] = useState(false);
   const [showPwForm, setShowPwForm] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [pwError, setPwError] = useState("");
   const [pwSuccess, setPwSuccess] = useState(false);
+  const [pwSaving, setPwSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -90,8 +91,12 @@ export default function ProfilePage() {
     e.preventDefault();
     setPwError("");
 
+    if (!currentPassword) {
+      setPwError("Please enter your current password");
+      return;
+    }
     if (newPassword.length < 8) {
-      setPwError("Password must be at least 8 characters");
+      setPwError("New password must be at least 8 characters");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -99,21 +104,22 @@ export default function ProfilePage() {
       return;
     }
 
+    setPwSaving(true);
     try {
-      await signIn("password", {
-        email: user!.email!,
-        password: newPassword,
-        flow: "signUp",
-      });
+      await changePasswordAction({ currentPassword, newPassword });
       setPwSuccess(true);
+      setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
       setShowPwForm(false);
       setTimeout(() => setPwSuccess(false), 3000);
+      toast("success", "Password updated");
     } catch (err) {
       setPwError(
         err instanceof Error ? err.message : "Failed to change password"
       );
+    } finally {
+      setPwSaving(false);
     }
   }
 
@@ -250,6 +256,13 @@ export default function ProfilePage() {
         {showPwForm && (
           <form onSubmit={handlePasswordChange} className="flex flex-col gap-4">
             <Input
+              label="Current Password"
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Enter your current password"
+            />
+            <Input
               label="New Password"
               type="password"
               value={newPassword}
@@ -257,7 +270,7 @@ export default function ProfilePage() {
               placeholder="Enter new password (min 8 characters)"
             />
             <Input
-              label="Confirm Password"
+              label="Confirm New Password"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
@@ -267,8 +280,8 @@ export default function ProfilePage() {
               <p className="text-[13px] text-[var(--danger)]">{pwError}</p>
             )}
             <div className="flex gap-2">
-              <Button type="submit" variant="primary">
-                Update Password
+              <Button type="submit" variant="primary" disabled={pwSaving}>
+                {pwSaving ? "Updating..." : "Update Password"}
               </Button>
               <Button
                 type="button"
@@ -276,6 +289,7 @@ export default function ProfilePage() {
                 onClick={() => {
                   setShowPwForm(false);
                   setPwError("");
+                  setCurrentPassword("");
                   setNewPassword("");
                   setConfirmPassword("");
                 }}
