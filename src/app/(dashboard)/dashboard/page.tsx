@@ -180,6 +180,9 @@ export default function DashboardPage() {
       (u) => u.role === "employee"
     ).length;
     const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
+    const [adminSelectedTaskId, setAdminSelectedTaskId] = useState<string | null>(null);
+
+    const adminActiveTasks = (tasks ?? []).filter((t) => t.status !== "done");
 
     function toggleTeam(teamId: string) {
       setExpandedTeams((prev) => {
@@ -275,6 +278,57 @@ export default function DashboardPage() {
             <ArrowRight className="h-4 w-4 text-[var(--text-muted)] shrink-0" />
           </div>
         </Card>
+
+        {/* My Tasks (for admins who have tasks assigned) */}
+        {adminActiveTasks.length > 0 && (
+          <div className="mb-6 sm:mb-8">
+            <h2 className="font-semibold text-[14px] text-[var(--text-secondary)] mb-3">
+              My Tasks ({adminActiveTasks.length})
+            </h2>
+            <div className="flex flex-col gap-2">
+              {adminActiveTasks.map((task) => {
+                const sc: Record<string, { color: string; bg: string }> = {
+                  "pending": { color: "var(--text-muted)", bg: "var(--bg-hover)" },
+                  "in-progress": { color: "#3B82F6", bg: "#EFF6FF" },
+                  "review": { color: "#F59E0B", bg: "#FFFBEB" },
+                };
+                const s = sc[task.status] ?? sc.pending;
+                const isSubTask = !!(task as any).parentTaskId;
+                return (
+                  <Card
+                    key={task._id}
+                    hover
+                    onClick={() => setAdminSelectedTaskId(task._id)}
+                  >
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          {isSubTask && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-600 shrink-0">
+                              HELPER
+                            </span>
+                          )}
+                          <h3 className="font-semibold text-[13px] text-[var(--text-primary)] truncate">
+                            {task.title}
+                          </h3>
+                        </div>
+                        <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">
+                          {task.briefName} &middot; {task.duration}
+                        </p>
+                      </div>
+                      <span
+                        className="shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-medium"
+                        style={{ color: s.color, backgroundColor: s.bg }}
+                      >
+                        {task.status}
+                      </span>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Recent Activity Feed */}
         <Card className="mb-6 sm:mb-8 p-4">
@@ -477,6 +531,14 @@ export default function DashboardPage() {
           )}
         </div>
 
+        {/* Admin Task Detail Modal */}
+        {adminSelectedTaskId && (
+          <TaskDetailModal
+            taskId={adminSelectedTaskId}
+            onClose={() => setAdminSelectedTaskId(null)}
+          />
+        )}
+
         {/* ═══ Brief Slide-in Panel ═══ */}
         {selectedBriefId && (
           <>
@@ -632,9 +694,16 @@ export default function DashboardPage() {
             >
               <div className="flex justify-between items-start gap-2">
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-semibold text-[13px] sm:text-[14px] text-[var(--text-primary)]">
-                    {task.title}
-                  </h3>
+                  <div className="flex items-center gap-1.5">
+                    {!!(task as any).parentTaskId && (
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-600 shrink-0">
+                        HELPER
+                      </span>
+                    )}
+                    <h3 className="font-semibold text-[13px] sm:text-[14px] text-[var(--text-primary)]">
+                      {task.title}
+                    </h3>
+                  </div>
                   <p className="text-[12px] text-[var(--text-secondary)] mt-1">
                     {task.briefName} &middot; {task.duration}
                   </p>
