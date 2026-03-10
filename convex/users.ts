@@ -178,6 +178,33 @@ export const deleteUser = mutation({
       await ctx.db.delete(n._id);
     }
 
+    // Clean up Convex Auth records so the email can be reused
+    const authAccounts = await ctx.db.query("authAccounts").collect();
+    const userAuthAccounts = authAccounts.filter((a: any) => a.userId === targetUserId);
+    for (const account of userAuthAccounts) {
+      await ctx.db.delete(account._id);
+    }
+    const authSessions = await ctx.db.query("authSessions").collect();
+    const userSessions = authSessions.filter((s: any) => s.userId === targetUserId);
+    for (const session of userSessions) {
+      // Delete refresh tokens for this session
+      const refreshTokens = await ctx.db.query("authRefreshTokens").collect();
+      const sessionTokens = refreshTokens.filter((t: any) => t.sessionId === session._id);
+      for (const token of sessionTokens) {
+        await ctx.db.delete(token._id);
+      }
+      await ctx.db.delete(session._id);
+    }
+
+    // Reset the invite so it can be used again
+    if (targetUser?.email) {
+      const allInvites = await ctx.db.query("invites").collect();
+      const invite = allInvites.find((inv: any) => inv.email === targetUser.email && inv.used);
+      if (invite) {
+        await ctx.db.patch(invite._id, { used: false } as any);
+      }
+    }
+
     await ctx.db.delete(targetUserId);
   },
 });
@@ -250,5 +277,48 @@ export const migrateManagersToAdmin = internalMutation({
     }
 
     return { migrated, invitesMigrated };
+  },
+});
+
+export const _cleanOrphanedAuthAccounts = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const allUsers = await ctx.db.query("users").collect();
+    const userIds = new Set(allUsers.map((u) => u._id));
+
+    const authAccounts = await ctx.db.query("authAccounts").collect();
+    let cleaned = 0;
+    for (const account of authAccounts) {
+      if (!userIds.has(account.userId as any)) {
+        await ctx.db.delete(account._id);
+        cleaned++;
+      }
+    }
+
+    const authSessions = await ctx.db.query("authSessions").collect();
+    for (const session of authSessions) {
+      if (!userIds.has(session.userId as any)) {
+        const refreshTokens = await ctx.db.query("authRefreshTokens").collect();
+        for (const token of refreshTokens) {
+          if ((token as any).sessionId === session._id) {
+            await ctx.db.delete(token._id);
+          }
+        }
+        await ctx.db.delete(session._id);
+        cleaned++;
+      }
+    }
+
+    // Reset invites for emails of deleted users
+    const allInvites = await ctx.db.query("invites").collect();
+    const existingEmails = new Set(allUsers.map((u) => u.email).filter(Boolean));
+    for (const inv of allInvites) {
+      if ((inv as any).used && (inv as any).email && !existingEmails.has((inv as any).email)) {
+        await ctx.db.patch(inv._id, { used: false } as any);
+        cleaned++;
+      }
+    }
+
+    return { cleaned };
   },
 });
