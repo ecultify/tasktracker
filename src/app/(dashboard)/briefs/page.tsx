@@ -69,7 +69,7 @@ export default function BriefsPage() {
   const { toast } = useToast();
   const isAdmin = user?.role === "admin";
 
-  const [expandedBrands, setExpandedBrands] = useState<Set<string>>(() => new Set(["__all__"]));
+  const [expandedBrands, setExpandedBrands] = useState<Set<string>>(() => new Set());
 
   function toggleBrand(id: string) {
     setExpandedBrands((prev) => {
@@ -118,12 +118,6 @@ export default function BriefsPage() {
     return folders;
   }, [briefs, brands]);
 
-  // Expand all brand folders on first load
-  useMemo(() => {
-    if (brandFolders.length > 0 && expandedBrands.has("__all__")) {
-      setExpandedBrands(new Set(brandFolders.map((f) => f.brandId)));
-    }
-  }, [brandFolders.length]);
 
   function openCreateModalForBrand(forBrandId?: string) {
     setBrandId(forBrandId ?? "");
