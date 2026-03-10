@@ -24,6 +24,7 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  BookOpen,
   type LucideIcon,
 } from "lucide-react";
 import { Doc } from "@/convex/_generated/dataModel";
@@ -50,6 +51,7 @@ const ROUTE_ICONS: Record<string, LucideIcon> = {
   "/deliverables": FileCheck,
   "/worklog": ClipboardList,
   "/content-calendar": CalendarRange,
+  "/history": BookOpen,
 };
 
 interface NavCategory {
@@ -142,6 +144,7 @@ const EMPLOYEE_NAV: NavCategory[] = [
     items: [
       { href: "/dashboard", label: "Queue" },
       { href: "/discussions", label: "Discussions" },
+      { href: "/history", label: "History" },
     ],
   },
   {

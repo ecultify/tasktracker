@@ -1,10 +1,11 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { Badge, Card } from "@/components/ui";
-import { ChevronLeft, ChevronRight, Calendar, Clock, CheckCircle2, Users, Briefcase } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, Clock, CheckCircle2, Users, Briefcase, X } from "lucide-react";
 
 const STATUS_COLORS: Record<string, { label: string; color: string; bg: string }> = {
   pending: { label: "Pending", color: "var(--text-secondary)", bg: "var(--bg-hover)" },
@@ -40,10 +41,46 @@ function shiftDate(dateStr: string, days: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+const MEMBER_STATUS_CONFIG: Record<string, { color: string; label: string; order: number }> = {
+  "in-progress": { color: "var(--accent-manager)", label: "In Progress", order: 1 },
+  pending: { color: "var(--text-secondary)", label: "To Do", order: 2 },
+  review: { color: "var(--accent-admin)", label: "Review", order: 3 },
+  done: { color: "var(--accent-employee)", label: "Done", order: 4 },
+};
+
 export default function WorkLogPage() {
   const user = useQuery(api.users.getCurrentUser);
   const [activeTab, setActiveTab] = useState<"worklog" | "manifest" | "teamload">("worklog");
   const [selectedDate, setSelectedDate] = useState(getTodayStr());
+
+  const [selectedMemberId, setSelectedMemberId] = useState<Id<"users"> | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const memberTasks = useQuery(
+    api.worklog.getTeamMemberTasks,
+    selectedMemberId ? { userId: selectedMemberId } : "skip"
+  );
+
+  function openMemberPanel(userId: Id<"users">) {
+    setSelectedMemberId(userId);
+    requestAnimationFrame(() => setPanelOpen(true));
+  }
+
+  function closeMemberPanel() {
+    setPanelOpen(false);
+    setTimeout(() => setSelectedMemberId(null), 200);
+  }
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") closeMemberPanel();
+    }
+    if (selectedMemberId) {
+      document.addEventListener("keydown", handleKey);
+    }
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [selectedMemberId]);
 
   const worklog = useQuery(api.worklog.getEmployeeWorkLog, { date: selectedDate });
   const manifest = useQuery(api.worklog.getTaskManifest);
@@ -379,7 +416,11 @@ export default function WorkLogPage() {
               {/* Members */}
               <div className="flex flex-col gap-1.5">
                 {team.members.map((member: any) => (
-                  <div key={member._id} className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-[var(--bg-hover)] transition-colors">
+                  <div
+                    key={member._id}
+                    onClick={() => openMemberPanel(member._id as Id<"users">)}
+                    className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+                  >
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full bg-[var(--accent-admin-dim)] flex items-center justify-center">
                         <span className="text-[9px] font-bold text-[var(--accent-admin)]">
@@ -421,6 +462,140 @@ export default function WorkLogPage() {
             </Card>
           )}
         </div>
+      )}
+
+      {/* Member Tasks Slide-in Panel */}
+      {selectedMemberId && (
+        <>
+          <div
+            className={`fixed inset-0 bg-black/40 z-40 transition-opacity duration-200 ${
+              panelOpen ? "opacity-100" : "opacity-0"
+            }`}
+            onClick={closeMemberPanel}
+          />
+          <div
+            ref={panelRef}
+            className={`fixed right-0 top-0 h-full w-full sm:w-[420px] z-50 bg-white border-l border-[var(--border)] shadow-xl flex flex-col transition-transform duration-200 ease-out ${
+              panelOpen ? "translate-x-0" : "translate-x-full"
+            }`}
+          >
+            {/* Panel Header */}
+            <div className="flex items-center justify-between px-5 h-14 border-b border-[var(--border)] shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <div className="w-8 h-8 rounded-full bg-[var(--accent-admin-dim)] flex items-center justify-center shrink-0">
+                  <span className="text-[12px] font-bold text-[var(--accent-admin)]">
+                    {(memberTasks?.user?.name ?? memberTasks?.user?.email ?? "?")[0]?.toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <h2 className="font-semibold text-[15px] text-[var(--text-primary)] truncate">
+                    {memberTasks?.user?.name ?? memberTasks?.user?.email ?? "Loading..."}
+                  </h2>
+                  {memberTasks?.user?.designation && (
+                    <p className="text-[11px] text-[var(--text-muted)] truncate">
+                      {memberTasks.user.designation}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={closeMemberPanel}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Panel Body */}
+            <div className="flex-1 overflow-y-auto px-5 py-5">
+              {memberTasks === undefined ? (
+                <p className="text-[13px] text-[var(--text-muted)]">Loading tasks...</p>
+              ) : memberTasks === null ? (
+                <p className="text-[13px] text-[var(--text-muted)]">Could not load data.</p>
+              ) : (
+                <>
+                  <div className="mb-4">
+                    <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                      {memberTasks.tasks.length} active task{memberTasks.tasks.length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+
+                  {/* Task Tree */}
+                  {(() => {
+                    const tasksList = memberTasks.tasks;
+                    const grouped: Record<string, typeof tasksList> = {};
+                    for (const task of tasksList) {
+                      if (!grouped[task.status]) grouped[task.status] = [];
+                      grouped[task.status].push(task);
+                    }
+                    const statusKeys = Object.keys(grouped).sort(
+                      (a, b) => (MEMBER_STATUS_CONFIG[a]?.order ?? 99) - (MEMBER_STATUS_CONFIG[b]?.order ?? 99)
+                    );
+
+                    if (statusKeys.length === 0) {
+                      return (
+                        <div className="text-[13px] text-[var(--text-muted)] font-mono px-1">
+                          └── No active tasks
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="bg-[var(--bg-hover)] rounded-lg p-4 overflow-x-auto">
+                        <div className="font-mono text-[13px] text-[var(--text-primary)] mb-2 font-semibold">
+                          {memberTasks.user.name ?? memberTasks.user.email}
+                        </div>
+                        <div className="font-mono text-[13px] leading-relaxed text-[var(--text-primary)]">
+                          {statusKeys.map((status, statusIdx) => {
+                            const config = MEMBER_STATUS_CONFIG[status] ?? { color: "var(--text-muted)", label: status, order: 99 };
+                            const statusTasks = grouped[status];
+                            const isLastStatus = statusIdx === statusKeys.length - 1;
+                            const connector = isLastStatus ? "└── " : "├── ";
+                            const childPrefix = isLastStatus ? "    " : "│   ";
+
+                            return (
+                              <div key={status}>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[var(--text-muted)] select-none">{connector}</span>
+                                  <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: config.color }} />
+                                  <span className="font-semibold text-[var(--text-secondary)]">{config.label}</span>
+                                  <span className="text-[var(--text-disabled)]">({statusTasks.length})</span>
+                                </div>
+                                {statusTasks.map((task, taskIdx) => {
+                                  const isLastTask = taskIdx === statusTasks.length - 1;
+                                  const taskConnector = isLastTask ? "└── " : "├── ";
+                                  return (
+                                    <div key={task._id} className="flex items-start gap-1">
+                                      <span className="text-[var(--text-muted)] select-none whitespace-pre">{childPrefix}{taskConnector}</span>
+                                      <div className="min-w-0">
+                                        <span className="text-[var(--text-primary)] break-words">{task.title}</span>
+                                        <div className="flex items-center gap-2 text-[11px] mt-0.5">
+                                          <span className="text-[var(--text-disabled)]">
+                                            {task.briefTitle}
+                                          </span>
+                                          <span className="text-[var(--accent-admin)]">
+                                            {task.duration}
+                                          </span>
+                                          <span className="text-[var(--text-disabled)]">
+                                            by {task.assignedByName}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

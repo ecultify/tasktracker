@@ -1,12 +1,12 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Badge, Button, Card, ConfirmModal, DatePicker, Input, PromptModal, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, useToast } from "@/components/ui";
-import { Trash2, Calendar, Copy } from "lucide-react";
+import { Trash2, Calendar, Copy, ChevronDown, ChevronRight, Plus, FolderOpen, Filter } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "var(--text-secondary)",
@@ -35,10 +35,16 @@ function daysUntil(deadline: number): number {
 
 export default function BriefsPage() {
   const router = useRouter();
-  const briefs = useQuery(api.briefs.listBriefs, {});
-  const brands = useQuery(api.brands.listBrands);
   const user = useQuery(api.users.getCurrentUser);
+  const brands = useQuery(api.brands.listBrands);
   const managers = useQuery(api.users.listManagers);
+
+  const [filterManagerId, setFilterManagerId] = useState<string>("");
+  const briefs = useQuery(
+    api.briefs.listBriefs,
+    filterManagerId ? { managerId: filterManagerId as Id<"users"> } : {}
+  );
+
   const createBrief = useMutation(api.briefs.createBrief);
   const deleteBrief = useMutation(api.briefs.deleteBrief);
   const [showModal, setShowModal] = useState(false);
@@ -62,6 +68,72 @@ export default function BriefsPage() {
   const [templateForBrief, setTemplateForBrief] = useState<Id<"briefTemplates"> | null>(null);
   const { toast } = useToast();
   const isAdmin = user?.role === "admin";
+
+  const [expandedBrands, setExpandedBrands] = useState<Set<string>>(() => new Set(["__all__"]));
+
+  function toggleBrand(id: string) {
+    setExpandedBrands((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  const brandFolders = useMemo(() => {
+    if (!briefs) return [];
+    const sorted = [...briefs].sort((a, b) => a.globalPriority - b.globalPriority);
+    const grouped = new Map<string, typeof sorted>();
+
+    for (const brief of sorted) {
+      const key = (brief as any).brandId ?? "__no_brand__";
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(brief);
+    }
+
+    const folders: { brandId: string; brandName: string; brandColor: string; briefs: typeof sorted }[] = [];
+
+    for (const [key, folderBriefs] of grouped) {
+      if (key === "__no_brand__") continue;
+      const brand = (brands ?? []).find((b: any) => b._id === key);
+      folders.push({
+        brandId: key,
+        brandName: brand?.name ?? "Unknown Brand",
+        brandColor: (brand as any)?.color ?? "#6b7280",
+        briefs: folderBriefs,
+      });
+    }
+
+    folders.sort((a, b) => a.brandName.localeCompare(b.brandName));
+
+    const noBrand = grouped.get("__no_brand__");
+    if (noBrand && noBrand.length > 0) {
+      folders.push({
+        brandId: "__no_brand__",
+        brandName: "No Brand",
+        brandColor: "#9ca3af",
+        briefs: noBrand,
+      });
+    }
+
+    return folders;
+  }, [briefs, brands]);
+
+  // Expand all brand folders on first load
+  useMemo(() => {
+    if (brandFolders.length > 0 && expandedBrands.has("__all__")) {
+      setExpandedBrands(new Set(brandFolders.map((f) => f.brandId)));
+    }
+  }, [brandFolders.length]);
+
+  function openCreateModalForBrand(forBrandId?: string) {
+    setBrandId(forBrandId ?? "");
+    setManagerId("");
+    setTitle("");
+    setDescription("");
+    setDeadline(undefined);
+    setBriefType("");
+    setShowModal(true);
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -89,6 +161,7 @@ export default function BriefsPage() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
+      {/* Page Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 sm:mb-8">
         <div>
           <h1 className="font-bold text-[20px] sm:text-[24px] text-[var(--text-primary)] tracking-tight">
@@ -138,142 +211,222 @@ export default function BriefsPage() {
                 )}
               </div>
             )}
-            <Button variant="primary" onClick={() => setShowModal(true)}>
+            <Button variant="primary" onClick={() => openCreateModalForBrand()}>
+              <Plus className="h-3.5 w-3.5 mr-1.5" />
               Create Brief
             </Button>
           </div>
         )}
       </div>
 
-      <div className="rounded-xl border border-[var(--border)] bg-white shadow-sm overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableHead>Priority</TableHead>
-            <TableHead>Title</TableHead>
-            <TableHead className="hidden md:table-cell">Manager</TableHead>
-            <TableHead className="hidden lg:table-cell">Teams</TableHead>
-            <TableHead className="hidden lg:table-cell">Brand</TableHead>
-            <TableHead className="hidden xl:table-cell">Type</TableHead>
-            <TableHead>Deadline</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="hidden sm:table-cell">Progress</TableHead>
-            {isAdmin && <TableHead className="w-10"></TableHead>}
-          </TableHeader>
-          <TableBody>
-            {(briefs ?? [])
-              .sort((a, b) => a.globalPriority - b.globalPriority)
-              .map((brief) => {
-                const dl = brief.deadline;
-                const overdue = dl && brief.status !== "completed" && brief.status !== "archived" && isOverdue(dl);
-                const daysLeft = dl ? daysUntil(dl) : null;
-
-                return (
-                  <TableRow
-                    key={brief._id}
-                    onClick={() => router.push(`/brief/${brief._id}`)}
-                  >
-                    <TableCell>
-                      {brief.globalPriority}
-                    </TableCell>
-                    <TableCell className="font-semibold">
-                      {brief.title}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      {(brief as { managerName?: string }).managerName ? (
-                        <Badge variant="manager">
-                          {(brief as { managerName?: string }).managerName}
-                        </Badge>
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <div className="flex gap-1 flex-wrap">
-                        {((brief as { teamNames?: string[] }).teamNames ?? []).map(
-                          (name) => (
-                            <Badge key={name} variant="neutral">
-                              {name}
-                            </Badge>
-                          )
-                        )}
-                        {!((brief as { teamNames?: string[] }).teamNames?.length) && "—"}
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      {(brief as any).brandId ? (
-                        <Badge variant="neutral">
-                          {(brands ?? []).find((b: any) => b._id === (brief as any).brandId)?.name ?? "—"}
-                        </Badge>
-                      ) : "—"}
-                    </TableCell>
-                    <TableCell className="hidden xl:table-cell">
-                      {(brief as any).briefType ? (
-                        <Badge variant="neutral">
-                          {(brief as any).briefType === "content_calendar" ? "Content Calendar" :
-                           (brief as any).briefType === "video_editing" ? "Video Editing" :
-                           (brief as any).briefType === "developmental" ? "Developmental" :
-                           (brief as any).briefType === "designing" ? "Designing" : (brief as any).briefType}
-                        </Badge>
-                      ) : "—"}
-                    </TableCell>
-                    <TableCell>
-                      {dl ? (
-                        <div className="flex items-center gap-1.5">
-                          <Calendar className={`h-3.5 w-3.5 ${overdue ? "text-[var(--danger)]" : "text-[var(--text-muted)]"}`} />
-                          <span className={`text-[12px] font-medium whitespace-nowrap ${overdue ? "text-[var(--danger)]" : "text-[var(--text-secondary)]"}`}>
-                            {formatDate(dl)}
-                          </span>
-                          {daysLeft !== null && brief.status !== "completed" && brief.status !== "archived" && (
-                            <span className={`text-[10px] ${overdue ? "text-[var(--danger)]" : daysLeft <= 3 ? "text-[var(--warning)]" : "text-[var(--text-muted)]"}`}>
-                              {overdue ? `${Math.abs(daysLeft)}d late` : `${daysLeft}d`}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-[var(--text-disabled)] text-[12px]">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className="font-medium text-[12px] capitalize"
-                        style={{
-                          color: STATUS_COLORS[brief.status] ?? "var(--text-secondary)",
-                        }}
-                      >
-                        {brief.status}
-                      </span>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      <div className="w-24 h-2 rounded-full bg-[var(--border-subtle)] overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-[var(--accent-employee)]"
-                          style={{
-                            width: `${(brief as { progress?: number }).progress ?? 0}%`,
-                          }}
-                        />
-                      </div>
-                    </TableCell>
-                    {isAdmin && (
-                      <TableCell>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeletingBriefId(brief._id);
-                          }}
-                          className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger-dim)] transition-all"
-                          title="Delete brief"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                );
-              })}
-          </TableBody>
-        </Table>
+      {/* Filter Bar */}
+      <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-2">
+          <Filter className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+          <select
+            value={filterManagerId}
+            onChange={(e) => setFilterManagerId(e.target.value)}
+            className="bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-1.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)] min-w-[180px]"
+          >
+            <option value="">All Managers</option>
+            {(managers ?? []).map((m: any) => (
+              <option key={m._id} value={m._id}>
+                {m.name ?? m.email}
+              </option>
+            ))}
+          </select>
+          {filterManagerId && (
+            <button
+              onClick={() => setFilterManagerId("")}
+              className="text-[11px] font-medium text-[var(--accent-admin)] hover:underline"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        <span className="text-[11px] text-[var(--text-muted)]">
+          {briefs?.length ?? 0} brief{(briefs?.length ?? 0) !== 1 ? "s" : ""}
+        </span>
       </div>
 
+      {/* Brand Folders */}
+      <div className="flex flex-col gap-4">
+        {brandFolders.map((folder) => {
+          const isExpanded = expandedBrands.has(folder.brandId);
+          const doneBriefs = folder.briefs.filter((b) => b.status === "completed").length;
+
+          return (
+            <Card key={folder.brandId} className="p-0 overflow-hidden">
+              {/* Folder Header */}
+              <div
+                className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
+                style={{ borderLeft: `4px solid ${folder.brandColor}` }}
+                onClick={() => toggleBrand(folder.brandId)}
+              >
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4 text-[var(--text-muted)] shrink-0" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 text-[var(--text-muted)] shrink-0" />
+                )}
+                <FolderOpen
+                  className="h-4.5 w-4.5 shrink-0"
+                  style={{ color: folder.brandColor }}
+                />
+                <span className="font-semibold text-[14px] text-[var(--text-primary)] flex-1">
+                  {folder.brandName}
+                </span>
+                <span className="text-[11px] text-[var(--text-muted)] tabular-nums shrink-0">
+                  {doneBriefs}/{folder.briefs.length} completed
+                </span>
+                {isAdmin && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openCreateModalForBrand(folder.brandId === "__no_brand__" ? undefined : folder.brandId);
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium text-[var(--accent-admin)] bg-[var(--accent-admin-dim)] hover:bg-[var(--accent-admin)] hover:text-white transition-all shrink-0"
+                  >
+                    <Plus className="h-3 w-3" />
+                    New Brief
+                  </button>
+                )}
+              </div>
+
+              {/* Folder Body - Briefs Table */}
+              {isExpanded && (
+                <div className="border-t border-[var(--border)] overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableHead>Priority</TableHead>
+                      <TableHead>Title</TableHead>
+                      <TableHead className="hidden md:table-cell">Manager</TableHead>
+                      <TableHead className="hidden lg:table-cell">Teams</TableHead>
+                      <TableHead className="hidden xl:table-cell">Type</TableHead>
+                      <TableHead>Deadline</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="hidden sm:table-cell">Progress</TableHead>
+                      {isAdmin && <TableHead className="w-10"></TableHead>}
+                    </TableHeader>
+                    <TableBody>
+                      {folder.briefs.map((brief) => {
+                        const dl = brief.deadline;
+                        const overdue = dl && brief.status !== "completed" && brief.status !== "archived" && isOverdue(dl);
+                        const daysLeft = dl ? daysUntil(dl) : null;
+
+                        return (
+                          <TableRow
+                            key={brief._id}
+                            onClick={() => router.push(`/brief/${brief._id}`)}
+                          >
+                            <TableCell>
+                              {brief.globalPriority}
+                            </TableCell>
+                            <TableCell className="font-semibold">
+                              {brief.title}
+                            </TableCell>
+                            <TableCell className="hidden md:table-cell">
+                              {(brief as { managerName?: string }).managerName ? (
+                                <Badge variant="manager">
+                                  {(brief as { managerName?: string }).managerName}
+                                </Badge>
+                              ) : (
+                                "—"
+                              )}
+                            </TableCell>
+                            <TableCell className="hidden lg:table-cell">
+                              <div className="flex gap-1 flex-wrap">
+                                {((brief as { teamNames?: string[] }).teamNames ?? []).map(
+                                  (name) => (
+                                    <Badge key={name} variant="neutral">
+                                      {name}
+                                    </Badge>
+                                  )
+                                )}
+                                {!((brief as { teamNames?: string[] }).teamNames?.length) && "—"}
+                              </div>
+                            </TableCell>
+                            <TableCell className="hidden xl:table-cell">
+                              {(brief as any).briefType ? (
+                                <Badge variant="neutral">
+                                  {(brief as any).briefType === "content_calendar" ? "Content Calendar" :
+                                   (brief as any).briefType === "video_editing" ? "Video Editing" :
+                                   (brief as any).briefType === "developmental" ? "Developmental" :
+                                   (brief as any).briefType === "designing" ? "Designing" : (brief as any).briefType}
+                                </Badge>
+                              ) : "—"}
+                            </TableCell>
+                            <TableCell>
+                              {dl ? (
+                                <div className="flex items-center gap-1.5">
+                                  <Calendar className={`h-3.5 w-3.5 ${overdue ? "text-[var(--danger)]" : "text-[var(--text-muted)]"}`} />
+                                  <span className={`text-[12px] font-medium whitespace-nowrap ${overdue ? "text-[var(--danger)]" : "text-[var(--text-secondary)]"}`}>
+                                    {formatDate(dl)}
+                                  </span>
+                                  {daysLeft !== null && brief.status !== "completed" && brief.status !== "archived" && (
+                                    <span className={`text-[10px] ${overdue ? "text-[var(--danger)]" : daysLeft <= 3 ? "text-[var(--warning)]" : "text-[var(--text-muted)]"}`}>
+                                      {overdue ? `${Math.abs(daysLeft)}d late` : `${daysLeft}d`}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-[var(--text-disabled)] text-[12px]">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className="font-medium text-[12px] capitalize"
+                                style={{
+                                  color: STATUS_COLORS[brief.status] ?? "var(--text-secondary)",
+                                }}
+                              >
+                                {brief.status}
+                              </span>
+                            </TableCell>
+                            <TableCell className="hidden sm:table-cell">
+                              <div className="w-24 h-2 rounded-full bg-[var(--border-subtle)] overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-[var(--accent-employee)]"
+                                  style={{
+                                    width: `${(brief as { progress?: number }).progress ?? 0}%`,
+                                  }}
+                                />
+                              </div>
+                            </TableCell>
+                            {isAdmin && (
+                              <TableCell>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDeletingBriefId(brief._id);
+                                  }}
+                                  className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger-dim)] transition-all"
+                                  title="Delete brief"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </Card>
+          );
+        })}
+
+        {brandFolders.length === 0 && briefs !== undefined && (
+          <Card>
+            <p className="text-[13px] text-[var(--text-muted)] text-center py-8">
+              {filterManagerId ? "No briefs found for this manager." : "No briefs yet. Create one to get started."}
+            </p>
+          </Card>
+        )}
+      </div>
+
+      {/* Create Brief Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <Card className="w-full max-w-md">
@@ -321,7 +474,7 @@ export default function BriefsPage() {
               </div>
               <div>
                 <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-2">
-                  Brand (optional)
+                  Brand
                 </label>
                 <select
                   value={brandId}

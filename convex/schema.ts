@@ -135,7 +135,9 @@ export default defineSchema({
     reviewedAt: v.optional(v.number()),
     fileIds: v.optional(v.array(v.id("_storage"))),
     fileNames: v.optional(v.array(v.string())),
-  }).index("by_task", ["taskId"]),
+  })
+    .index("by_task", ["taskId"])
+    .index("by_submittedBy", ["submittedBy"]),
 
   // ─── COMMENTS ──────────────────────────────────
   comments: defineTable({

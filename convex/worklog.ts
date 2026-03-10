@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
 
 export const getEmployeeWorkLog = query({
   args: { date: v.string() }, // "YYYY-MM-DD"
@@ -168,6 +169,57 @@ export const getTaskManifest = query({
   },
 });
 
+export const getTeamMemberTasks = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId: targetUserId }) => {
+    const callerId = await getAuthUserId(ctx);
+    if (!callerId) return null;
+    const caller = await ctx.db.get(callerId);
+    if (!caller || caller.role !== "admin") return null;
+
+    const targetUser = await ctx.db.get(targetUserId);
+    if (!targetUser) return null;
+
+    const allTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_assignee", (q) => q.eq("assigneeId", targetUserId))
+      .collect();
+    const allBriefs = await ctx.db.query("briefs").collect();
+    const allUsers = await ctx.db.query("users").collect();
+
+    const activeBriefs = allBriefs.filter(
+      (b) => !["archived", "completed"].includes(b.status)
+    );
+    const activeBriefIds = new Set(activeBriefs.map((b) => b._id));
+
+    const activeTasks = allTasks.filter((t) => activeBriefIds.has(t.briefId));
+
+    return {
+      user: {
+        _id: targetUser._id,
+        name: targetUser.name,
+        email: targetUser.email,
+        designation: targetUser.designation,
+        avatarUrl: targetUser.avatarUrl,
+      },
+      tasks: activeTasks.map((t) => {
+        const brief = activeBriefs.find((b) => b._id === t.briefId);
+        const assignedByUser = allUsers.find((u) => u._id === t.assignedBy);
+        return {
+          _id: t._id,
+          title: t.title,
+          status: t.status,
+          duration: t.duration,
+          briefTitle: brief?.title ?? "Unknown",
+          briefId: t.briefId,
+          assignedByName: assignedByUser?.name ?? assignedByUser?.email ?? "Unknown",
+          deadline: t.deadline,
+        };
+      }),
+    };
+  },
+});
+
 export const getTeamLoadView = query({
   args: {},
   handler: async (ctx) => {
@@ -244,5 +296,114 @@ export const getTeamLoadView = query({
         loadLevel,
       };
     });
+  },
+});
+
+export const getEmployeeHistory = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+
+    const allTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_assignee", (q) => q.eq("assigneeId", userId))
+      .collect();
+    if (allTasks.length === 0) return [];
+
+    const briefIds = [...new Set(allTasks.map((t) => t.briefId))];
+    const briefs = (await Promise.all(briefIds.map((id) => ctx.db.get(id)))).filter(Boolean);
+
+    const brandIds = [...new Set(briefs.map((b) => b!.brandId).filter(Boolean))] as Id<"brands">[];
+    const brands = (await Promise.all(brandIds.map((id) => ctx.db.get(id)))).filter(Boolean);
+
+    const deliverables = await ctx.db
+      .query("deliverables")
+      .withIndex("by_submittedBy", (q) => q.eq("submittedBy", userId))
+      .collect();
+
+    const deliverablesByTask = new Map<string, typeof deliverables>();
+    for (const d of deliverables) {
+      const key = d.taskId as string;
+      if (!deliverablesByTask.has(key)) deliverablesByTask.set(key, []);
+      deliverablesByTask.get(key)!.push(d);
+    }
+
+    const brandMap = new Map(brands.map((b) => [b!._id, b!]));
+    const briefMap = new Map(briefs.map((b) => [b!._id, b!]));
+
+    type BrandGroup = {
+      brand: { _id: string; name: string; color: string };
+      briefs: {
+        _id: string;
+        title: string;
+        status: string;
+        briefType?: string;
+        tasks: {
+          _id: string;
+          title: string;
+          status: string;
+          duration: string;
+          deliverables: {
+            _id: string;
+            message: string;
+            status?: string;
+            submittedAt: number;
+            fileNames?: string[];
+          }[];
+        }[];
+      }[];
+    };
+
+    const brandGroups = new Map<string, BrandGroup>();
+
+    for (const task of allTasks) {
+      const brief = briefMap.get(task.briefId);
+      if (!brief) continue;
+
+      const brandId = brief.brandId ? (brief.brandId as string) : "__no_brand__";
+      const brand = brief.brandId ? brandMap.get(brief.brandId) : null;
+
+      if (!brandGroups.has(brandId)) {
+        brandGroups.set(brandId, {
+          brand: {
+            _id: brandId,
+            name: brand?.name ?? "No Brand",
+            color: brand?.color ?? "#6b7280",
+          },
+          briefs: [],
+        });
+      }
+
+      const group = brandGroups.get(brandId)!;
+      let briefEntry = group.briefs.find((b) => b._id === (brief._id as string));
+      if (!briefEntry) {
+        briefEntry = {
+          _id: brief._id as string,
+          title: brief.title,
+          status: brief.status,
+          briefType: (brief as any).briefType,
+          tasks: [],
+        };
+        group.briefs.push(briefEntry);
+      }
+
+      const taskDeliverables = deliverablesByTask.get(task._id as string) ?? [];
+      briefEntry.tasks.push({
+        _id: task._id as string,
+        title: task.title,
+        status: task.status,
+        duration: task.duration,
+        deliverables: taskDeliverables.map((d) => ({
+          _id: d._id as string,
+          message: d.message,
+          status: d.status,
+          submittedAt: d.submittedAt,
+          fileNames: d.fileNames,
+        })),
+      });
+    }
+
+    return [...brandGroups.values()];
   },
 });

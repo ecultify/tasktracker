@@ -26,6 +26,8 @@ import {
   Eye,
   Pencil,
   Trash2,
+  AlertTriangle,
+  UserPlus,
 } from "lucide-react";
 import { FilePreviewModal } from "./FilePreviewModal";
 
@@ -90,6 +92,7 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
 
   const generateUploadUrl = useMutation(api.attachments.generateUploadUrl);
   const updateTask = useMutation(api.tasks.updateTask);
+  const reassignTaskMutation = useMutation(api.tasks.reassignTask);
   const deleteTaskMutation = useMutation(api.tasks.deleteTask);
   const deleteDeliverable = useMutation(api.approvals.deleteDeliverable);
   const briefId = detail?.task?.briefId;
@@ -132,6 +135,9 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
   const [confirmDeleteDeliverableId, setConfirmDeleteDeliverableId] = useState<string | null>(null);
   const [isDeletingDeliverable, setIsDeletingDeliverable] = useState(false);
   const [previewFile, setPreviewFile] = useState<{ name: string; url: string } | null>(null);
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassignTarget, setReassignTarget] = useState("");
+  const [isReassigning, setIsReassigning] = useState(false);
 
   // Escape to close
   const handleKey = useCallback(
@@ -367,6 +373,77 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
                   Cancel
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Reassign banner for unassigned tasks */}
+          {!assignee && isAdmin && (
+            <div className="px-5 py-3 bg-amber-50 border-b border-amber-200">
+              {!showReassign ? (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                    <p className="text-[13px] text-amber-700 font-medium">
+                      This task&apos;s assignee has been removed. Please reassign.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowReassign(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white bg-amber-500 hover:bg-amber-600 transition-colors shrink-0"
+                  >
+                    <UserPlus className="h-3 w-3" />
+                    Reassign
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                    <p className="text-[13px] text-amber-700 font-medium">Select a new assignee</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      value={reassignTarget}
+                      onChange={(e) => setReassignTarget(e.target.value)}
+                      className="flex-1 px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-[12px] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    >
+                      <option value="">Select employee</option>
+                      {editAllMembers.map((emp) => (
+                        <option key={emp._id} value={emp._id}>
+                          {(emp.name ?? emp.email ?? "Unknown") as string}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={async () => {
+                        if (!reassignTarget || isReassigning) return;
+                        setIsReassigning(true);
+                        try {
+                          await reassignTaskMutation({
+                            taskId: taskId as Id<"tasks">,
+                            newAssigneeId: reassignTarget as Id<"users">,
+                          });
+                          setShowReassign(false);
+                          setReassignTarget("");
+                        } finally {
+                          setIsReassigning(false);
+                        }
+                      }}
+                      disabled={!reassignTarget || isReassigning}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white bg-amber-500 hover:bg-amber-600 transition-colors disabled:opacity-50"
+                    >
+                      {isReassigning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                      {isReassigning ? "Saving..." : "Confirm"}
+                    </button>
+                    <button
+                      onClick={() => { setShowReassign(false); setReassignTarget(""); }}
+                      className="px-3 py-1.5 rounded-lg text-[12px] font-medium text-amber-700 border border-amber-300 bg-white hover:bg-amber-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

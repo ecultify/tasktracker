@@ -8,7 +8,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { Badge, Button, Card, ConfirmModal, DatePicker, Input, PromptModal, Textarea, useToast } from "@/components/ui";
 import { AttachmentList } from "@/components/ui/AttachmentList";
 import { TaskDetailModal } from "@/components/ui/TaskDetailModal";
-import { Trash2, Calendar, Columns3, List, Lock, FileDown, Save, MessageCircle, ArrowLeft } from "lucide-react";
+import { Trash2, Calendar, Columns3, List, Lock, FileDown, Save, MessageCircle, ArrowLeft, AlertTriangle } from "lucide-react";
 import { ContentCalendarView } from "@/components/ContentCalendarView";
 
 function parseDuration(str: string): number {
@@ -513,7 +513,7 @@ export default function BriefPage() {
                             <div
                               key={task._id}
                               onClick={() => setSelectedTaskId(task._id)}
-                              className={`p-2.5 rounded-lg border bg-white cursor-pointer hover:shadow-sm transition-shadow ${isBlocked ? "border-[var(--danger)] opacity-60" : "border-[var(--border-subtle)]"}`}
+                              className={`p-2.5 rounded-lg border bg-white cursor-pointer hover:shadow-sm transition-shadow ${isBlocked ? "border-[var(--danger)] opacity-60" : !assignee ? "border-amber-400" : "border-[var(--border-subtle)]"}`}
                             >
                               <div className="flex items-start gap-1.5">
                                 {isBlocked && <Lock className="h-3 w-3 text-[var(--danger)] shrink-0 mt-0.5" />}
@@ -521,9 +521,18 @@ export default function BriefPage() {
                                   {task.title}
                                 </p>
                               </div>
-                              <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                                {assignee?.name ?? assignee?.email ?? "?"} &middot; {task.duration}
-                              </p>
+                              {!assignee ? (
+                                <div className="flex items-center gap-1 mt-1">
+                                  <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
+                                  <span className="text-[10px] font-medium text-amber-600">
+                                    Unassigned — Reassign
+                                  </span>
+                                </div>
+                              ) : (
+                                <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                                  {assignee.name ?? assignee.email} &middot; {task.duration}
+                                </p>
+                              )}
                               {(() => {
                                 const rawNext = status === "pending" ? "in-progress" : status === "in-progress" ? "review" : "done";
                                 const canMoveDone = isAdmin;
@@ -561,7 +570,7 @@ export default function BriefPage() {
                       return blocker && blocker.status !== "done";
                     });
                   return (
-                    <Card key={task._id} className={`p-4 cursor-pointer hover:shadow-md transition-shadow ${isBlocked ? "opacity-60 border-[var(--danger)]" : ""}`} onClick={() => setSelectedTaskId(task._id)}>
+                    <Card key={task._id} className={`p-4 cursor-pointer hover:shadow-md transition-shadow ${isBlocked ? "opacity-60 border-[var(--danger)]" : !assignee ? "border-amber-400" : ""}`} onClick={() => setSelectedTaskId(task._id)}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
@@ -570,9 +579,18 @@ export default function BriefPage() {
                               {task.title}
                             </p>
                           </div>
-                          <p className="text-[11px] text-[var(--text-secondary)] mt-1">
-                            {assignee?.name ?? assignee?.email ?? "Unassigned"} &middot; {task.duration}
-                          </p>
+                          {!assignee ? (
+                            <div className="flex items-center gap-1 mt-1">
+                              <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
+                              <span className="text-[11px] font-medium text-amber-600">
+                                Unassigned — Click to reassign
+                              </span>
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-[var(--text-secondary)] mt-1">
+                              {assignee.name ?? assignee.email} &middot; {task.duration}
+                            </p>
+                          )}
                           {(() => {
                             const rawNext = task.status === "pending" ? "in-progress" : task.status === "in-progress" ? "review" : "done";
                             const canMoveDone = isAdmin;

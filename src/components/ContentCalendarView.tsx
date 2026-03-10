@@ -478,9 +478,11 @@ export function ContentCalendarView({
             task={selectedTask}
             isEditable={isEditable}
             employees={employees}
+            admins={admins}
             onClose={() => setSelectedTaskId(null)}
             updateTask={updateTask}
             updateTaskStatus={updateTaskStatus}
+            deleteTask={deleteTask}
             toast={toast}
           />
         )}
@@ -748,17 +750,21 @@ function DetailSidebar({
   task,
   isEditable,
   employees,
+  admins,
   onClose,
   updateTask,
   updateTaskStatus,
+  deleteTask,
   toast,
 }: {
   task: any;
   isEditable: boolean;
   employees: any[];
+  admins: any[];
   onClose: () => void;
   updateTask: any;
   updateTaskStatus: any;
+  deleteTask: any;
   toast: (type: "success" | "error" | "info", msg: string) => void;
 }) {
   const [editTitle, setEditTitle] = useState(task.title);
@@ -773,6 +779,7 @@ function DetailSidebar({
       : ""
   );
   const [editAssignee, setEditAssignee] = useState(task.assigneeId ?? "");
+  const [editAssignor, setEditAssignor] = useState(task.assignedBy ?? "");
   const [editDescription, setEditDescription] = useState(
     task.description ?? ""
   );
@@ -804,6 +811,8 @@ function DetailSidebar({
         updates.description = editDescription;
       if (editAssignee && editAssignee !== task.assigneeId)
         updates.assigneeId = editAssignee;
+      if (editAssignor && editAssignor !== task.assignedBy)
+        updates.assignedBy = editAssignor;
       if (editDeadline) {
         const ts = new Date(editDeadline + "T23:59:59").getTime();
         if (ts !== task.deadline) updates.deadline = ts;
@@ -824,6 +833,16 @@ function DetailSidebar({
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    try {
+      await deleteTask({ taskId: task._id });
+      onClose();
+      toast("success", "Entry deleted");
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Failed to delete");
     }
   }
 
@@ -861,15 +880,29 @@ function DetailSidebar({
     <div className="w-[360px] shrink-0 bg-white flex flex-col overflow-hidden">
       {/* Sidebar Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-        <h3 className="font-semibold text-[14px] text-[var(--text-primary)] truncate">
-          Entry Details
-        </h3>
-        <button
-          onClick={onClose}
-          className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: si.color }} />
+          <h3 className="font-semibold text-[14px] text-[var(--text-primary)] truncate">
+            Entry Details
+          </h3>
+        </div>
+        <div className="flex items-center gap-1">
+          {isEditable && (
+            <button
+              onClick={handleDelete}
+              className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-red-50 transition-colors"
+              title="Delete entry"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Sidebar Content */}
@@ -962,10 +995,10 @@ function DetailSidebar({
           </div>
         </div>
 
-        {/* Post Date */}
+        {/* Go Live Date */}
         <div>
           <label className="font-medium text-[11px] text-[var(--text-muted)] uppercase tracking-wide block mb-1">
-            Post Date
+            Go Live Date
           </label>
           {isEditable ? (
             <input
@@ -983,37 +1016,29 @@ function DetailSidebar({
           )}
         </div>
 
-        {/* Status */}
+        {/* Assignor */}
         <div>
           <label className="font-medium text-[11px] text-[var(--text-muted)] uppercase tracking-wide block mb-1">
-            Status
+            Assignor
           </label>
           {isEditable ? (
             <select
-              value={task.status}
-              onChange={(e) =>
-                updateTaskStatus({
-                  taskId: task._id,
-                  newStatus: e.target.value,
-                }).catch((err: any) =>
-                  toast(
-                    "error",
-                    err instanceof Error
-                      ? err.message
-                      : "Failed to update status"
-                  )
-                )
-              }
+              value={editAssignor}
+              onChange={(e) => setEditAssignor(e.target.value)}
               className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-2.5 py-1.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
             >
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
+              <option value="">Select assignor</option>
+              {admins.map((u: any) => (
+                <option key={u._id} value={u._id}>
+                  {u.name ?? u.email}
+                  {u.designation ? ` — ${u.designation}` : ""}
                 </option>
               ))}
             </select>
           ) : (
-            <Badge variant="neutral">{si.label}</Badge>
+            <p className="text-[13px] text-[var(--text-primary)]">
+              {task.assignorName ?? "—"}
+            </p>
           )}
         </div>
 
@@ -1050,6 +1075,22 @@ function DetailSidebar({
           )}
         </div>
 
+        {/* Assigned At */}
+        <div>
+          <label className="font-medium text-[11px] text-[var(--text-muted)] uppercase tracking-wide block mb-1">
+            Assigned At
+          </label>
+          <p className="text-[13px] text-[var(--text-primary)]">
+            {task.assignedAt
+              ? new Date(task.assignedAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : "Not yet assigned"}
+          </p>
+        </div>
+
         {/* Deadline */}
         <div>
           <label className="font-medium text-[11px] text-[var(--text-muted)] uppercase tracking-wide block mb-1">
@@ -1072,6 +1113,40 @@ function DetailSidebar({
                   })
                 : "No deadline"}
             </p>
+          )}
+        </div>
+
+        {/* Status */}
+        <div>
+          <label className="font-medium text-[11px] text-[var(--text-muted)] uppercase tracking-wide block mb-1">
+            Status
+          </label>
+          {isEditable ? (
+            <select
+              value={task.status}
+              onChange={(e) =>
+                updateTaskStatus({
+                  taskId: task._id,
+                  newStatus: e.target.value,
+                }).catch((err: any) =>
+                  toast(
+                    "error",
+                    err instanceof Error
+                      ? err.message
+                      : "Failed to update status"
+                  )
+                )
+              }
+              className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-2.5 py-1.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+            >
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <Badge variant="neutral">{si.label}</Badge>
           )}
         </div>
 
