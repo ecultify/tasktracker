@@ -520,77 +520,63 @@ export default function WorkLogPage() {
                     </span>
                   </div>
 
-                  {/* Task Tree */}
-                  {(() => {
-                    const tasksList = memberTasks.tasks;
-                    const grouped: Record<string, typeof tasksList> = {};
-                    for (const task of tasksList) {
-                      if (!grouped[task.status]) grouped[task.status] = [];
-                      grouped[task.status].push(task);
-                    }
-                    const statusKeys = Object.keys(grouped).sort(
-                      (a, b) => (MEMBER_STATUS_CONFIG[a]?.order ?? 99) - (MEMBER_STATUS_CONFIG[b]?.order ?? 99)
-                    );
-
-                    if (statusKeys.length === 0) {
-                      return (
-                        <div className="text-[13px] text-[var(--text-muted)] font-mono px-1">
-                          └── No active tasks
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div className="bg-[var(--bg-hover)] rounded-lg p-4 overflow-x-auto">
-                        <div className="font-mono text-[13px] text-[var(--text-primary)] mb-2 font-semibold">
-                          {memberTasks.user.name ?? memberTasks.user.email}
-                        </div>
-                        <div className="font-mono text-[13px] leading-relaxed text-[var(--text-primary)]">
-                          {statusKeys.map((status, statusIdx) => {
-                            const config = MEMBER_STATUS_CONFIG[status] ?? { color: "var(--text-muted)", label: status, order: 99 };
-                            const statusTasks = grouped[status];
-                            const isLastStatus = statusIdx === statusKeys.length - 1;
-                            const connector = isLastStatus ? "└── " : "├── ";
-                            const childPrefix = isLastStatus ? "    " : "│   ";
-
-                            return (
-                              <div key={status}>
-                                <div className="flex items-center gap-1">
-                                  <span className="text-[var(--text-muted)] select-none">{connector}</span>
-                                  <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: config.color }} />
-                                  <span className="font-semibold text-[var(--text-secondary)]">{config.label}</span>
-                                  <span className="text-[var(--text-disabled)]">({statusTasks.length})</span>
-                                </div>
-                                {statusTasks.map((task, taskIdx) => {
-                                  const isLastTask = taskIdx === statusTasks.length - 1;
-                                  const taskConnector = isLastTask ? "└── " : "├── ";
-                                  return (
-                                    <div key={task._id} className="flex items-start gap-1">
-                                      <span className="text-[var(--text-muted)] select-none whitespace-pre">{childPrefix}{taskConnector}</span>
-                                      <div className="min-w-0">
-                                        <span className="text-[var(--text-primary)] break-words">{task.title}</span>
-                                        <div className="flex items-center gap-2 text-[11px] mt-0.5">
-                                          <span className="text-[var(--text-disabled)]">
-                                            {task.briefTitle}
-                                          </span>
-                                          <span className="text-[var(--accent-admin)]">
-                                            {task.duration}
-                                          </span>
-                                          <span className="text-[var(--text-disabled)]">
-                                            by {task.assignedByName}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })()}
+                  {/* Task Table */}
+                  {memberTasks.tasks.length === 0 ? (
+                    <p className="text-[13px] text-[var(--text-muted)]">No active tasks</p>
+                  ) : (
+                    <div className="rounded-lg border border-[var(--border)] overflow-hidden">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="bg-[var(--bg-hover)]">
+                            <th className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide px-3 py-2">Task</th>
+                            <th className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide px-3 py-2">Brief</th>
+                            <th className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide px-3 py-2">Status</th>
+                            <th className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide px-3 py-2">Duration</th>
+                            <th className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide px-3 py-2">Assigned By</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {memberTasks.tasks
+                            .sort((a, b) => (MEMBER_STATUS_CONFIG[a.status]?.order ?? 99) - (MEMBER_STATUS_CONFIG[b.status]?.order ?? 99))
+                            .map((task, idx) => {
+                              const config = MEMBER_STATUS_CONFIG[task.status] ?? { color: "var(--text-muted)", label: task.status, order: 99 };
+                              return (
+                                <tr
+                                  key={task._id}
+                                  className={`border-t border-[var(--border-subtle)] ${idx % 2 === 0 ? "bg-white" : "bg-[var(--bg-primary)]"} hover:bg-[var(--bg-hover)] transition-colors`}
+                                >
+                                  <td className="px-3 py-2.5">
+                                    <span className="text-[12px] text-[var(--text-primary)] font-medium leading-snug line-clamp-2">
+                                      {task.title}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <span className="text-[11px] text-[var(--text-secondary)] truncate block max-w-[100px]">
+                                      {task.briefTitle}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <span
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold"
+                                      style={{ color: config.color, backgroundColor: config.color + "18" }}
+                                    >
+                                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: config.color }} />
+                                      {config.label}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <span className="text-[11px] text-[var(--accent-admin)] font-medium">{task.duration}</span>
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <span className="text-[11px] text-[var(--text-muted)]">{task.assignedByName}</span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </>
               )}
             </div>

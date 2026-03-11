@@ -403,6 +403,16 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_brand", ["brandId"]),
 
+  // ─── BRAND IMPORTANT LINKS ─────────────
+  brandLinks: defineTable({
+    brandId: v.id("brands"),
+    url: v.string(),
+    label: v.string(),
+    description: v.optional(v.string()),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+  }).index("by_brand", ["brandId"]),
+
   // ─── CONTENT CALENDAR SHEETS (month tabs) ───
   contentCalendarSheets: defineTable({
     briefId: v.id("briefs"),

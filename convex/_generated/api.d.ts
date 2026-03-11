@@ -16,6 +16,7 @@ import type * as attachments from "../attachments.js";
 import type * as auth from "../auth.js";
 import type * as brandCredentials from "../brandCredentials.js";
 import type * as brandDocuments from "../brandDocuments.js";
+import type * as brandLinks from "../brandLinks.js";
 import type * as brands from "../brands.js";
 import type * as briefs from "../briefs.js";
 import type * as chat from "../chat.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   brandCredentials: typeof brandCredentials;
   brandDocuments: typeof brandDocuments;
+  brandLinks: typeof brandLinks;
   brands: typeof brands;
   briefs: typeof briefs;
   chat: typeof chat;

@@ -58,6 +58,17 @@ export default function BrandDetailPage() {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
+  // Important Links
+  const brandLinks = useQuery(api.brandLinks.listLinks, { brandId });
+  const addBrandLink = useMutation(api.brandLinks.addLink);
+  const deleteBrandLink = useMutation(api.brandLinks.deleteLink);
+  const [linksExpanded, setLinksExpanded] = useState(true);
+  const [showAddLink, setShowAddLink] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkLabel, setLinkLabel] = useState("");
+  const [linkDesc, setLinkDesc] = useState("");
+  const [deletingLinkId, setDeletingLinkId] = useState<Id<"brandLinks"> | null>(null);
+
   // JSR Links
   const jsrLinks = useQuery(api.jsr.listJsrLinks, { brandId });
   const generateJsrLink = useMutation(api.jsr.generateJsrLink);
@@ -89,6 +100,8 @@ export default function BrandDetailPage() {
   const validManagers = brand.managers.filter((m): m is NonNullable<typeof m> => !!m);
   const assignedManagerIds = validManagers.map((m) => m._id);
   const availableManagers = (managers ?? []).filter((m) => !assignedManagerIds.includes(m._id));
+  const isBrandManager = user ? assignedManagerIds.includes(user._id) : false;
+  const canManageLinks = isAdmin || isBrandManager;
 
   async function handleAssignManager() {
     if (!addManagerId) return;
@@ -153,6 +166,26 @@ export default function BrandDetailPage() {
       toast("success", "Logo removed");
     } catch (err) {
       toast("error", err instanceof Error ? err.message : "Failed to remove logo");
+    }
+  }
+
+  async function handleAddBrandLink(e: React.FormEvent) {
+    e.preventDefault();
+    if (!linkUrl.trim() || !linkLabel.trim()) return;
+    try {
+      await addBrandLink({
+        brandId,
+        url: linkUrl.trim(),
+        label: linkLabel.trim(),
+        description: linkDesc.trim() || undefined,
+      });
+      setLinkUrl("");
+      setLinkLabel("");
+      setLinkDesc("");
+      setShowAddLink(false);
+      toast("success", "Link added");
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Failed to add link");
     }
   }
 
@@ -590,6 +623,103 @@ export default function BrandDetailPage() {
         )}
       </div>
 
+      {/* Important Links Section */}
+      <div className="mt-8">
+        <button
+          onClick={() => setLinksExpanded(!linksExpanded)}
+          className="flex items-center gap-2 mb-4 group"
+        >
+          {linksExpanded ? <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" /> : <ChevronRight className="h-4 w-4 text-[var(--text-muted)]" />}
+          <Link2 className="h-4 w-4 text-[var(--text-secondary)]" />
+          <h2 className="font-semibold text-[16px] text-[var(--text-primary)]">
+            Important Links
+          </h2>
+          <span className="text-[12px] text-[var(--text-muted)]">
+            ({brandLinks?.length ?? 0})
+          </span>
+        </button>
+        {linksExpanded && (
+          <Card>
+            {(brandLinks ?? []).length === 0 && !showAddLink && (
+              <p className="text-[13px] text-[var(--text-muted)] mb-3">No important links added yet.</p>
+            )}
+            <div className="flex flex-col gap-2">
+              {(brandLinks ?? []).map((link) => (
+                <div
+                  key={link._id}
+                  className="flex items-start justify-between py-2.5 px-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] hover:bg-[var(--bg-hover)] transition-colors group"
+                >
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    <ExternalLink className="h-4 w-4 text-[var(--accent-admin)] mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-[13px] text-[var(--accent-admin)] hover:underline block"
+                      >
+                        {link.label}
+                      </a>
+                      {link.description && (
+                        <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                          {link.description}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-[var(--text-muted)] mt-0.5 truncate">
+                        {link.url}
+                      </p>
+                    </div>
+                  </div>
+                  {canManageLinks && (
+                    <button
+                      onClick={() => setDeletingLinkId(link._id)}
+                      className="text-[var(--text-muted)] hover:text-[var(--danger)] transition-colors shrink-0 opacity-0 group-hover:opacity-100"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            {showAddLink ? (
+              <form onSubmit={handleAddBrandLink} className="mt-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]">
+                <div className="flex flex-col gap-2 mb-2">
+                  <input
+                    value={linkLabel}
+                    onChange={(e) => setLinkLabel(e.target.value)}
+                    placeholder="Link name (e.g. Brand Guidelines)"
+                    required
+                    className="bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                  />
+                  <input
+                    value={linkUrl}
+                    onChange={(e) => setLinkUrl(e.target.value)}
+                    placeholder="URL (e.g. https://drive.google.com/...)"
+                    required
+                    className="bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                  />
+                  <input
+                    value={linkDesc}
+                    onChange={(e) => setLinkDesc(e.target.value)}
+                    placeholder="Description (optional)"
+                    className="bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button type="submit" variant="primary">Save</Button>
+                  <Button type="button" variant="secondary" onClick={() => { setShowAddLink(false); setLinkUrl(""); setLinkLabel(""); setLinkDesc(""); }}>Cancel</Button>
+                </div>
+              </form>
+            ) : canManageLinks && (
+              <Button variant="secondary" className="mt-3" onClick={() => setShowAddLink(true)}>
+                <Plus className="h-4 w-4 mr-1.5" />
+                Add Link
+              </Button>
+            )}
+          </Card>
+        )}
+      </div>
+
       {/* Credentials Section (Admin Only) */}
       {isAdmin && (
         <div className="mt-8">
@@ -938,6 +1068,23 @@ export default function BrandDetailPage() {
           if (removingManagerId) await handleRemoveManager(removingManagerId);
         }}
         onCancel={() => setRemovingManagerId(null)}
+      />
+
+      <ConfirmModal
+        open={!!deletingLinkId}
+        title="Delete Link"
+        message="Are you sure you want to delete this link?"
+        confirmLabel="Delete"
+        confirmingLabel="Deleting..."
+        variant="danger"
+        onConfirm={async () => {
+          if (deletingLinkId) {
+            await deleteBrandLink({ linkId: deletingLinkId });
+            toast("success", "Link deleted");
+          }
+          setDeletingLinkId(null);
+        }}
+        onCancel={() => setDeletingLinkId(null)}
       />
     </div>
   );
