@@ -1104,28 +1104,66 @@ export default function BrandDetailPage() {
                 <X className="h-4 w-4" />
               </button>
             </div>
+
+            {/* Date session pills */}
+            {(() => {
+              const msgs = jsrMessages ?? [];
+              const dateCounts: Record<string, number> = {};
+              for (const m of msgs) {
+                const d = new Date(m.createdAt).toISOString().split("T")[0];
+                dateCounts[d] = (dateCounts[d] ?? 0) + 1;
+              }
+              const dates = Object.keys(dateCounts).sort().reverse();
+              if (dates.length === 0) return null;
+              const todayStr = new Date().toISOString().split("T")[0];
+              const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+              function dateLabel(d: string) {
+                if (d === todayStr) return "Today";
+                if (d === yesterdayStr) return "Yesterday";
+                return new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+              }
+              return (
+                <div className="border-b border-[var(--border)] px-4 py-2.5 flex gap-1.5 overflow-x-auto" style={{ overscrollBehavior: "contain" }}>
+                  {dates.map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => {
+                        const el = document.getElementById(`chat-date-${d}`);
+                        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--border)] hover:border-[var(--accent-admin)] hover:bg-[var(--accent-admin)]/5 transition-colors"
+                    >
+                      <span className="text-[11px] font-semibold text-[var(--text-primary)]">{dateLabel(d)}</span>
+                      <span className="text-[9px] font-medium text-[var(--text-muted)] bg-[var(--bg-hover)] px-1.5 py-0.5 rounded-full">{dateCounts[d]}</span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-1" style={{ overscrollBehavior: "contain" }}>
               {(jsrMessages ?? []).length === 0 && (
                 <p className="text-[12px] text-[var(--text-muted)] text-center py-8">No messages yet. Start a conversation with the client.</p>
               )}
               {(() => {
                 const msgs = jsrMessages ?? [];
-                let lastDate = "";
+                let lastDateKey = "";
+                const todayStr = new Date().toISOString().split("T")[0];
+                const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split("T")[0];
                 return msgs.map((msg: any) => {
-                  const msgDate = new Date(msg.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-                  const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-                  const yesterday = new Date(Date.now() - 86400000).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-                  let dateLabel = msgDate;
-                  if (msgDate === today) dateLabel = "Today";
-                  else if (msgDate === yesterday) dateLabel = "Yesterday";
-                  const showDateHeader = msgDate !== lastDate;
-                  lastDate = msgDate;
+                  const dateKey = new Date(msg.createdAt).toISOString().split("T")[0];
+                  let dateLabel = new Date(msg.createdAt).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+                  if (dateKey === todayStr) dateLabel = "Today";
+                  else if (dateKey === yesterdayStr) dateLabel = "Yesterday";
+                  const showDateHeader = dateKey !== lastDateKey;
+                  lastDateKey = dateKey;
                   return (
                     <div key={msg._id}>
                       {showDateHeader && (
-                        <div className="flex items-center gap-3 my-3">
+                        <div id={`chat-date-${dateKey}`} className="sticky top-0 z-10 flex items-center gap-3 my-3 py-1 bg-white/95 backdrop-blur-sm">
                           <div className="flex-1 h-px bg-[var(--border)]" />
-                          <span className="text-[10px] font-medium text-[var(--text-muted)] shrink-0">{dateLabel}</span>
+                          <span className="text-[10px] font-bold text-[var(--accent-admin)] bg-[var(--accent-admin)]/8 px-3 py-1 rounded-full shrink-0">{dateLabel}</span>
                           <div className="flex-1 h-px bg-[var(--border)]" />
                         </div>
                       )}
@@ -1145,6 +1183,8 @@ export default function BrandDetailPage() {
                 });
               })()}
             </div>
+
+            {/* Input */}
             <div className="border-t border-[var(--border)] p-3 flex items-center gap-2">
               <input
                 value={jsrMsgContent}
