@@ -58,6 +58,14 @@ export default function BriefsPage() {
   );
   const [deadline, setDeadline] = useState<number | undefined>(undefined);
   const [briefType, setBriefType] = useState<string>("");
+  const [briefMode, setBriefMode] = useState<"master" | "single">("master");
+
+  // Single task brief fields
+  const [stTaskDesc, setStTaskDesc] = useState("");
+  const [stAssignee, setStAssignee] = useState("");
+  const [stDurVal, setStDurVal] = useState("2");
+  const [stDurUnit, setStDurUnit] = useState<"m" | "h" | "d">("h");
+  const allUsers = useQuery(api.users.listAllUsers);
 
   const templates = useQuery(api.templates.listTemplates);
   const createFromTemplate = useMutation(api.templates.createFromTemplate);
@@ -119,6 +127,19 @@ export default function BriefsPage() {
   }, [briefs, brands]);
 
 
+  const employees = (allUsers ?? []).filter((u: any) => u.role === "employee");
+
+  function parseDuration(str: string): number {
+    const m = str.match(/^(\d+)(m|h|d)$/i);
+    if (!m) return 0;
+    const val = parseInt(m[1], 10);
+    const unit = m[2].toLowerCase();
+    if (unit === "m") return val;
+    if (unit === "h") return val * 60;
+    if (unit === "d") return val * 60 * 8;
+    return 0;
+  }
+
   function openCreateModalForBrand(forBrandId?: string) {
     setBrandId(forBrandId ?? "");
     setManagerId("");
@@ -126,19 +147,38 @@ export default function BriefsPage() {
     setDescription("");
     setDeadline(undefined);
     setBriefType("");
+    setBriefMode("master");
+    setStTaskDesc("");
+    setStAssignee("");
+    setStDurVal("2");
+    setStDurUnit("h");
     setShowModal(true);
   }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     try {
+      const isSingle = briefMode === "single";
+      const numVal = parseInt(stDurVal, 10);
+      const taskDuration = isSingle ? `${numVal}${stDurUnit}` : undefined;
+      const taskDurationMinutes = isSingle && taskDuration ? parseDuration(taskDuration) : undefined;
+
+      type BriefType = "developmental" | "designing" | "video_editing" | "content_calendar" | "copywriting" | "single_task";
+
       await createBrief({
         title,
         description,
         ...(brandId ? { brandId: brandId as Id<"brands"> } : {}),
         ...(managerId ? { assignedManagerId: managerId as Id<"users"> } : {}),
         ...(deadline !== undefined ? { deadline } : {}),
-        ...(briefType ? { briefType: briefType as "developmental" | "designing" | "video_editing" | "content_calendar" } : {}),
+        briefType: isSingle ? "single_task" as BriefType : (briefType || undefined) as BriefType | undefined,
+        ...(isSingle && stAssignee ? {
+          taskTitle: title,
+          taskDescription: stTaskDesc || undefined,
+          taskAssigneeId: stAssignee as Id<"users">,
+          taskDuration,
+          taskDurationMinutes,
+        } : {}),
       });
       setShowModal(false);
       setTitle("");
@@ -147,7 +187,12 @@ export default function BriefsPage() {
       setManagerId("");
       setDeadline(undefined);
       setBriefType("");
-      toast("success", "Brief created");
+      setBriefMode("master");
+      setStTaskDesc("");
+      setStAssignee("");
+      setStDurVal("2");
+      setStDurUnit("h");
+      toast("success", isSingle ? "Single task brief created" : "Brief created");
     } catch (err) {
       toast("error", err instanceof Error ? err.message : "Failed to create brief");
     }
@@ -423,11 +468,36 @@ export default function BriefsPage() {
       {/* Create Brief Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-md">
+          <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="font-semibold text-[18px] text-[var(--text-primary)] mb-4">
               Create Brief
             </h2>
             <form onSubmit={handleCreate} className="flex flex-col gap-4">
+              {/* Brief Mode Toggle */}
+              <div>
+                <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-2">Brief Mode</label>
+                <div className="flex gap-1 p-1 rounded-xl bg-[var(--bg-hover)]">
+                  <button
+                    type="button"
+                    onClick={() => setBriefMode("master")}
+                    className={`flex-1 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
+                      briefMode === "master" ? "bg-white text-[var(--text-primary)] shadow-sm" : "text-[var(--text-secondary)]"
+                    }`}
+                  >
+                    Master Brief
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBriefMode("single")}
+                    className={`flex-1 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
+                      briefMode === "single" ? "bg-white text-[var(--text-primary)] shadow-sm" : "text-[var(--text-secondary)]"
+                    }`}
+                  >
+                    Single Task Brief
+                  </button>
+                </div>
+              </div>
+
               <Input
                 label="Title"
                 value={title}
@@ -441,35 +511,93 @@ export default function BriefsPage() {
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief description"
               />
+
+              {briefMode === "master" && (
+                <div>
+                  <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-2">Brief Type (optional)</label>
+                  <select
+                    value={briefType}
+                    onChange={(e) => setBriefType(e.target.value)}
+                    className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                  >
+                    <option value="">No specific type</option>
+                    <option value="developmental">Developmental</option>
+                    <option value="designing">Designing</option>
+                    <option value="video_editing">Video Editing</option>
+                    <option value="copywriting">Copywriting</option>
+                  </select>
+                </div>
+              )}
+
+              {briefMode === "single" && (
+                <>
+                  <div>
+                    <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-2">Task Type</label>
+                    <select
+                      value={briefType}
+                      onChange={(e) => setBriefType(e.target.value)}
+                      className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                    >
+                      <option value="">Select type...</option>
+                      <option value="developmental">Developmental</option>
+                      <option value="designing">Designing</option>
+                      <option value="video_editing">Video Editing</option>
+                      <option value="copywriting">Copywriting</option>
+                    </select>
+                  </div>
+                  <Textarea
+                    label="Task Description"
+                    value={stTaskDesc}
+                    onChange={(e) => setStTaskDesc(e.target.value)}
+                    placeholder="Describe the task in detail..."
+                  />
+                  <div>
+                    <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-2">Assignee</label>
+                    <select
+                      value={stAssignee}
+                      onChange={(e) => setStAssignee(e.target.value)}
+                      required
+                      className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                    >
+                      <option value="">Select assignee...</option>
+                      {employees.map((emp: any) => (
+                        <option key={emp._id} value={emp._id}>
+                          {emp.name ?? emp.email}{emp.designation ? ` — ${emp.designation}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-2">Duration</label>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="number"
+                        min="1"
+                        value={stDurVal}
+                        onChange={(e) => setStDurVal(e.target.value)}
+                        required
+                        className="w-20 bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                      />
+                      <select
+                        value={stDurUnit}
+                        onChange={(e) => setStDurUnit(e.target.value as "m" | "h" | "d")}
+                        className="flex-1 bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                      >
+                        <option value="m">Minutes</option>
+                        <option value="h">Hours</option>
+                        <option value="d">Days</option>
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div>
-                <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-2">
-                  Brief Type (optional)
-                </label>
-                <select
-                  value={briefType}
-                  onChange={(e) => setBriefType(e.target.value)}
-                  className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
-                >
-                  <option value="">No specific type</option>
-                  <option value="developmental">Developmental</option>
-                  <option value="designing">Designing</option>
-                  <option value="video_editing">Video Editing</option>
-                </select>
+                <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-2">Deadline (optional)</label>
+                <DatePicker value={deadline} onChange={setDeadline} placeholder="Set deadline" />
               </div>
               <div>
-                <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-2">
-                  Deadline (optional)
-                </label>
-                <DatePicker
-                  value={deadline}
-                  onChange={setDeadline}
-                  placeholder="Set deadline"
-                />
-              </div>
-              <div>
-                <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-2">
-                  Brand
-                </label>
+                <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-2">Brand</label>
                 <select
                   value={brandId}
                   onChange={(e) => { setBrandId(e.target.value); setManagerId(""); }}
@@ -484,7 +612,7 @@ export default function BriefsPage() {
               {isAdmin && (
                 <div>
                   <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-2">
-                    Assign Manager (optional)
+                    {briefMode === "single" ? "Assignor / Manager" : "Assign Manager (optional)"}
                   </label>
                   <select
                     value={managerId}
@@ -499,23 +627,13 @@ export default function BriefsPage() {
                       ))}
                   </select>
                   {brandId && brandManagerIds && brandManagerIds.length === 0 && (
-                    <p className="text-[11px] text-[var(--text-muted)] mt-1">
-                      No managers assigned to this brand yet.
-                    </p>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-1">No managers assigned to this brand yet.</p>
                   )}
                 </div>
               )}
               <div className="flex gap-2">
-                <Button type="submit" variant="primary">
-                  Create
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setShowModal(false)}
-                >
-                  Cancel
-                </Button>
+                <Button type="submit" variant="primary">Create</Button>
+                <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
               </div>
             </form>
           </Card>

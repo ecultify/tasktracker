@@ -33,6 +33,7 @@ import type * as reminders from "../reminders.js";
 import type * as schedule from "../schedule.js";
 import type * as search from "../search.js";
 import type * as seed from "../seed.js";
+import type * as taskDailySummaries from "../taskDailySummaries.js";
 import type * as tasks from "../tasks.js";
 import type * as teams from "../teams.js";
 import type * as templates from "../templates.js";
@@ -72,6 +73,7 @@ declare const fullApi: ApiFromModules<{
   schedule: typeof schedule;
   search: typeof search;
   seed: typeof seed;
+  taskDailySummaries: typeof taskDailySummaries;
   tasks: typeof tasks;
   teams: typeof teams;
   templates: typeof templates;

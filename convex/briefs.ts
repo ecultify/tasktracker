@@ -104,9 +104,17 @@ export const createBrief = mutation({
         v.literal("developmental"),
         v.literal("designing"),
         v.literal("video_editing"),
-        v.literal("content_calendar")
+        v.literal("content_calendar"),
+        v.literal("copywriting"),
+        v.literal("single_task")
       )
     ),
+    // Single task brief: inline task fields
+    taskTitle: v.optional(v.string()),
+    taskDescription: v.optional(v.string()),
+    taskAssigneeId: v.optional(v.id("users")),
+    taskDuration: v.optional(v.string()),
+    taskDurationMinutes: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -128,10 +136,12 @@ export const createBrief = mutation({
       if (brandMgrs.length > 0) assignedManagerId = brandMgrs[0].managerId;
     }
 
+    const { taskTitle, taskDescription, taskAssigneeId, taskDuration, taskDurationMinutes, ...briefArgs } = args;
+
     const briefId = await ctx.db.insert("briefs", {
-      ...args,
+      ...briefArgs,
       ...(assignedManagerId ? { assignedManagerId } : {}),
-      status: "draft",
+      status: args.briefType === "single_task" ? "active" : "draft",
       createdBy: userId,
       globalPriority,
     });
@@ -143,6 +153,34 @@ export const createBrief = mutation({
       details: JSON.stringify({ title: args.title }),
       timestamp: Date.now(),
     });
+
+    if (args.briefType === "single_task" && taskAssigneeId && taskDuration && taskDurationMinutes) {
+      const taskId = await ctx.db.insert("tasks", {
+        briefId,
+        title: taskTitle || args.title,
+        description: taskDescription,
+        assigneeId: taskAssigneeId,
+        assignedBy: userId,
+        status: "pending",
+        sortOrder: 1000,
+        duration: taskDuration,
+        durationMinutes: taskDurationMinutes,
+        ...(args.deadline ? { deadline: args.deadline } : {}),
+        assignedAt: Date.now(),
+      });
+
+      await ctx.db.insert("notifications", {
+        recipientId: taskAssigneeId,
+        type: "task_assigned",
+        title: "Task assigned",
+        message: `You were assigned "${taskTitle || args.title}"`,
+        briefId,
+        taskId,
+        triggeredBy: userId,
+        read: false,
+        createdAt: Date.now(),
+      });
+    }
 
     return briefId;
   },
@@ -472,6 +510,24 @@ export const getBriefGraphData = query({
     }
 
     return result;
+  },
+});
+
+export const listBriefsForEmployee = query({
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+
+    const myTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_assignee", (q) => q.eq("assigneeId", userId))
+      .collect();
+    const briefIds = [...new Set(myTasks.map((t) => t.briefId))];
+
+    const briefs = await Promise.all(briefIds.map((id) => ctx.db.get(id)));
+    return briefs
+      .filter((b): b is NonNullable<typeof b> => !!b && b.status !== "archived")
+      .map((b) => ({ _id: b._id, title: b.title }));
   },
 });
 

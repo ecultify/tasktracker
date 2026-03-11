@@ -149,6 +149,17 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
   const [helperDurUnit, setHelperDurUnit] = useState<"m" | "h" | "d">("h");
   const [isCreatingSubTask, setIsCreatingSubTask] = useState(false);
 
+  const dailySummaries = useQuery(api.taskDailySummaries.listSummaries, { taskId: taskId as Id<"tasks"> });
+  const addDailySummary = useMutation(api.taskDailySummaries.addSummary);
+  const updateDailySummary = useMutation(api.taskDailySummaries.updateSummary);
+  const deleteDailySummary = useMutation(api.taskDailySummaries.deleteSummary);
+  const [showSummaryForm, setShowSummaryForm] = useState(false);
+  const [summaryDate, setSummaryDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [summaryText, setSummaryText] = useState("");
+  const [isAddingSummary, setIsAddingSummary] = useState(false);
+  const [editingSummaryId, setEditingSummaryId] = useState<string | null>(null);
+  const [editingSummaryText, setEditingSummaryText] = useState("");
+
   // Escape to close
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
@@ -532,6 +543,123 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
                   {task.description}
                 </p>
               </div>
+            )}
+          </div>
+
+          {/* Daily Summaries Section */}
+          <div className="p-5 space-y-3 border-t border-[var(--border)]">
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold text-[12px] text-[var(--text-secondary)] uppercase tracking-wide">
+                Daily Summaries ({dailySummaries?.length ?? 0})
+              </h4>
+              {isAssignee && task.status !== "done" && (
+                <button
+                  onClick={() => { setShowSummaryForm(!showSummaryForm); setSummaryDate(new Date().toISOString().slice(0, 10)); setSummaryText(""); }}
+                  className="flex items-center gap-1 text-[11px] font-medium text-[var(--accent-admin)] hover:underline"
+                >
+                  <FileText className="h-3 w-3" />
+                  {showSummaryForm ? "Cancel" : "Add Daily Update"}
+                </button>
+              )}
+            </div>
+
+            {showSummaryForm && (
+              <div className="bg-[var(--bg-primary)] rounded-lg p-3 border border-[var(--border-subtle)] space-y-2">
+                <div>
+                  <label className="text-[11px] font-medium text-[var(--text-secondary)] block mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={summaryDate}
+                    onChange={(e) => setSummaryDate(e.target.value)}
+                    className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-1.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-[var(--text-secondary)] block mb-1">Summary</label>
+                  <textarea
+                    value={summaryText}
+                    onChange={(e) => setSummaryText(e.target.value)}
+                    placeholder="What did you work on today?"
+                    rows={3}
+                    className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-2 text-[12px] resize-none focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                  />
+                </div>
+                <button
+                  onClick={async () => {
+                    if (!summaryText.trim()) return;
+                    setIsAddingSummary(true);
+                    try {
+                      await addDailySummary({ taskId: taskId as Id<"tasks">, date: summaryDate, summary: summaryText.trim() });
+                      setShowSummaryForm(false);
+                      setSummaryText("");
+                    } catch (err: any) {
+                      alert(err.message ?? "Failed to add summary");
+                    } finally { setIsAddingSummary(false); }
+                  }}
+                  disabled={isAddingSummary || !summaryText.trim()}
+                  className="px-3 py-1.5 bg-[var(--accent-admin)] text-white rounded-lg text-[11px] font-semibold disabled:opacity-50"
+                >
+                  {isAddingSummary ? "Saving..." : "Save"}
+                </button>
+              </div>
+            )}
+
+            {(dailySummaries ?? []).length > 0 ? (
+              <div className="space-y-2">
+                {(dailySummaries ?? []).map((s: any, idx: number) => (
+                  <div key={s._id} className="bg-[var(--bg-primary)] rounded-lg p-3 border border-[var(--border-subtle)]">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-[11px] font-medium text-[var(--accent-admin)]">
+                        Day {idx + 1} — {new Date(s.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                      </p>
+                      {isAssignee && (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => { setEditingSummaryId(s._id); setEditingSummaryText(s.summary); }}
+                            className="text-[var(--text-muted)] hover:text-[var(--accent-admin)]"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={async () => { await deleteDailySummary({ summaryId: s._id }); }}
+                            className="text-[var(--text-muted)] hover:text-red-500"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {editingSummaryId === s._id ? (
+                      <div className="space-y-2 mt-1">
+                        <textarea
+                          value={editingSummaryText}
+                          onChange={(e) => setEditingSummaryText(e.target.value)}
+                          rows={2}
+                          className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-2 text-[12px] resize-none focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                        />
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={async () => {
+                              await updateDailySummary({ summaryId: s._id as Id<"taskDailySummaries">, summary: editingSummaryText.trim() });
+                              setEditingSummaryId(null);
+                            }}
+                            className="px-2.5 py-1 bg-[var(--accent-admin)] text-white rounded text-[10px] font-semibold"
+                          >Save</button>
+                          <button
+                            onClick={() => setEditingSummaryId(null)}
+                            className="px-2.5 py-1 bg-[var(--bg-hover)] text-[var(--text-secondary)] rounded text-[10px] font-semibold"
+                          >Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[12px] text-[var(--text-primary)] whitespace-pre-wrap">{s.summary}</p>
+                    )}
+                    <p className="text-[10px] text-[var(--text-muted)] mt-1">— {s.authorName}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[12px] text-[var(--text-muted)]">No daily summaries yet.</p>
             )}
           </div>
 

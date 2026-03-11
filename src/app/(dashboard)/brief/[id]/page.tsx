@@ -2,14 +2,15 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Badge, Button, Card, ConfirmModal, DatePicker, Input, PromptModal, Textarea, useToast } from "@/components/ui";
 import { AttachmentList } from "@/components/ui/AttachmentList";
 import { TaskDetailModal } from "@/components/ui/TaskDetailModal";
-import { Trash2, Calendar, Columns3, List, Lock, FileDown, Save, MessageCircle, ArrowLeft, AlertTriangle } from "lucide-react";
+import { Trash2, Calendar, Columns3, List, Lock, FileDown, Save, MessageCircle, ArrowLeft, AlertTriangle, User, Clock, ClipboardList, FileText, Paperclip } from "lucide-react";
 import { ContentCalendarView } from "@/components/ContentCalendarView";
+import { CommentThread } from "@/components/comments/CommentThread";
 
 function parseDuration(str: string): number {
   const m = str.match(/^(\d+)(m|h|d)$/i);
@@ -28,6 +29,202 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   review: { label: "Review", color: "var(--accent-admin)" },
   done: { label: "Done", color: "var(--accent-employee)" },
 };
+
+function SingleTaskBriefView({ brief, tasks, tasksData, isAdmin, user }: {
+  brief: any;
+  tasks: any[];
+  tasksData: any;
+  isAdmin: boolean;
+  user: any;
+}) {
+  const task = tasks[0];
+  const taskId = task?._id as Id<"tasks"> | undefined;
+
+  const deliverables = useQuery(api.approvals.listDeliverables, taskId ? { taskId } : "skip");
+  const dailySummaries = useQuery(api.taskDailySummaries.listSummaries, taskId ? { taskId } : "skip");
+  const subTasks = useQuery(api.tasks.getSubTasks, taskId ? { parentTaskId: taskId } : "skip");
+
+  const assigneeName = useMemo(() => {
+    if (!task || !tasksData?.byTeam) return "Unassigned";
+    for (const items of Object.values(tasksData.byTeam) as any[]) {
+      for (const item of items) {
+        if (item.task._id === task._id) return item.assignee?.name ?? item.assignee?.email ?? "Unassigned";
+      }
+    }
+    return "Unassigned";
+  }, [task, tasksData]);
+
+  const assignerName = useMemo(() => {
+    if (!task?.assignedBy || !tasksData?.users) return "—";
+    const u = tasksData.users.find((u: any) => u._id === task.assignedBy);
+    return u?.name ?? u?.email ?? "—";
+  }, [task, tasksData]);
+
+  if (!task) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8">
+        <p className="text-[13px] text-[var(--text-muted)]">
+          No task found for this single task brief. The task may still be loading.
+        </p>
+      </div>
+    );
+  }
+
+  const statusStyle = STATUS_LABELS[task.status] ?? { label: task.status, color: "var(--text-secondary)" };
+
+  return (
+    <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-0 overflow-hidden">
+      {/* Left: Task Details + Daily Summaries */}
+      <div className="border-r border-[var(--border)] overflow-auto p-5 space-y-5">
+        <div>
+          <h2 className="font-semibold text-[16px] text-[var(--text-primary)] mb-1">{task.title}</h2>
+          <span
+            className="inline-flex items-center px-2.5 py-0.5 font-medium text-[11px] rounded-full"
+            style={{ color: statusStyle.color, backgroundColor: `color-mix(in srgb, ${statusStyle.color} 12%, transparent)` }}
+          >{statusStyle.label}</span>
+        </div>
+
+        {task.description && (
+          <div>
+            <p className="text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-1">Description</p>
+            <p className="text-[13px] text-[var(--text-primary)] whitespace-pre-wrap">{task.description}</p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-[var(--bg-primary)] rounded-lg p-3 border border-[var(--border-subtle)]">
+            <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide mb-0.5">Assignee</p>
+            <p className="text-[13px] font-medium text-[var(--text-primary)] flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+              {assigneeName}
+            </p>
+          </div>
+          <div className="bg-[var(--bg-primary)] rounded-lg p-3 border border-[var(--border-subtle)]">
+            <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide mb-0.5">Assigned By</p>
+            <p className="text-[13px] font-medium text-[var(--text-primary)] flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+              {assignerName}
+            </p>
+          </div>
+          <div className="bg-[var(--bg-primary)] rounded-lg p-3 border border-[var(--border-subtle)]">
+            <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide mb-0.5">Duration</p>
+            <p className="text-[13px] font-medium text-[var(--text-primary)] flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+              {task.duration ?? "—"}
+            </p>
+          </div>
+          {task.deadline && (
+            <div className="bg-[var(--bg-primary)] rounded-lg p-3 border border-[var(--border-subtle)]">
+              <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide mb-0.5">Deadline</p>
+              <p className="text-[13px] font-medium text-[var(--text-primary)] flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                {new Date(task.deadline).toLocaleDateString()}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Sub-tasks */}
+        {subTasks && subTasks.length > 0 && (
+          <div>
+            <p className="text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <ClipboardList className="w-3.5 h-3.5" /> Sub-Tasks ({subTasks.length})
+            </p>
+            <div className="space-y-1.5">
+              {subTasks.map((st: any) => (
+                <div key={st._id} className="flex items-center justify-between bg-[var(--bg-primary)] rounded-lg px-3 py-2 border border-[var(--border-subtle)]">
+                  <div>
+                    <p className="text-[12px] font-medium text-[var(--text-primary)]">{st.title}</p>
+                    <p className="text-[11px] text-[var(--text-muted)]">{st.assigneeName}</p>
+                  </div>
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 font-medium text-[10px] rounded-full"
+                    style={{ color: STATUS_LABELS[st.status]?.color ?? "var(--text-secondary)", backgroundColor: `color-mix(in srgb, ${STATUS_LABELS[st.status]?.color ?? "var(--text-secondary)"} 12%, transparent)` }}
+                  >{STATUS_LABELS[st.status]?.label ?? st.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Daily Summaries */}
+        <div>
+          <p className="text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5" /> Daily Summaries
+          </p>
+          {dailySummaries && dailySummaries.length > 0 ? (
+            <div className="space-y-2">
+              {dailySummaries.map((s: any, idx: number) => (
+                <div key={s._id} className="bg-[var(--bg-primary)] rounded-lg p-3 border border-[var(--border-subtle)]">
+                  <p className="text-[11px] font-medium text-[var(--accent-admin)]">
+                    Day {idx + 1} — {new Date(s.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </p>
+                  <p className="text-[13px] text-[var(--text-primary)] mt-1 whitespace-pre-wrap">{s.summary}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[12px] text-[var(--text-muted)]">No daily summaries yet.</p>
+          )}
+        </div>
+      </div>
+
+      {/* Right: Deliverables + Attachments + Comments */}
+      <div className="overflow-auto p-5 space-y-5">
+        {/* Deliverables */}
+        <div>
+          <p className="text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <Paperclip className="w-3.5 h-3.5" /> Deliverables ({deliverables?.length ?? 0})
+          </p>
+          {deliverables && deliverables.length > 0 ? (
+            <div className="space-y-2">
+              {deliverables.map((d: any) => {
+                const badgeColor =
+                  d.status === "approved" ? "var(--accent-employee)" :
+                  d.status === "rejected" ? "#dc2626" :
+                  d.status === "changes_requested" ? "#f59e0b" :
+                  "var(--text-secondary)";
+                return (
+                  <Card key={d._id} className="!p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="truncate mr-2">
+                        <p className="text-[12px] font-medium text-[var(--text-primary)] truncate">{d.fileName ?? "Deliverable"}</p>
+                        <p className="text-[10px] text-[var(--text-muted)]">
+                          by {d.submitterName ?? "Unknown"} · {new Date(d.submittedAt ?? d._creationTime).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <span
+                        className="inline-flex items-center px-2 py-0.5 font-medium text-[10px] rounded-full"
+                        style={{ color: badgeColor, backgroundColor: `color-mix(in srgb, ${badgeColor} 12%, transparent)` }}
+                      >{d.status}</span>
+                    </div>
+                    {d.note && <p className="text-[11px] text-[var(--text-secondary)] mt-1">{d.note}</p>}
+                  </Card>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-[12px] text-[var(--text-muted)]">No deliverables submitted yet.</p>
+          )}
+        </div>
+
+        {/* Attachments */}
+        <div>
+          <p className="text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-2">Attachments</p>
+          <AttachmentList parentType="brief" parentId={brief._id} />
+        </div>
+
+        {/* Comments */}
+        <div>
+          <p className="text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <MessageCircle className="w-3.5 h-3.5" /> Comments
+          </p>
+          <CommentThread parentType="brief" parentId={brief._id} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function BriefPage() {
   const params = useParams();
@@ -258,6 +455,14 @@ export default function BriefPage() {
         <div className="flex-1 overflow-hidden">
           <ContentCalendarView briefId={briefId} isEditable={!!isAdmin} brandId={brief?.brandId} />
         </div>
+      ) : brief.briefType === "single_task" ? (
+        <SingleTaskBriefView
+          brief={brief}
+          tasks={allTasks}
+          tasksData={tasksData}
+          isAdmin={!!isAdmin}
+          user={user}
+        />
       ) : (
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-0 overflow-hidden">
         {/* Column 1 - Create Task + Task List */}

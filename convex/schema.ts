@@ -63,7 +63,9 @@ export default defineSchema({
         v.literal("developmental"),
         v.literal("designing"),
         v.literal("video_editing"),
-        v.literal("content_calendar")
+        v.literal("content_calendar"),
+        v.literal("copywriting"),
+        v.literal("single_task")
       )
     ),
     createdBy: v.id("users"),
@@ -190,6 +192,17 @@ export default defineSchema({
   })
     .index("by_task", ["taskId"])
     .index("by_user", ["userId"]),
+
+  // ─── TASK DAILY SUMMARIES ─────────────────────
+  taskDailySummaries: defineTable({
+    taskId: v.id("tasks"),
+    userId: v.id("users"),
+    date: v.string(),
+    summary: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_task", ["taskId"])
+    .index("by_task_date", ["taskId", "date"]),
 
   // ─── BRIEF TEMPLATES ──────────────────────────
   briefTemplates: defineTable({

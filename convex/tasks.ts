@@ -513,6 +513,71 @@ export const getSubTasks = query({
   },
 });
 
+export const createEmployeeTask = mutation({
+  args: {
+    briefId: v.id("briefs"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    assignorId: v.id("users"),
+    duration: v.string(),
+    durationMinutes: v.number(),
+    deadline: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+
+    const user = await ctx.db.get(userId);
+    if (!user || user.role !== "employee") {
+      throw new Error("Only employees can create additional tasks");
+    }
+
+    const assignor = await ctx.db.get(args.assignorId);
+    if (!assignor || assignor.role !== "admin") {
+      throw new Error("Assignor must be an admin");
+    }
+
+    const brief = await ctx.db.get(args.briefId);
+    if (!brief) throw new Error("Brief not found");
+
+    const existingTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_assignee_sort", (q) => q.eq("assigneeId", userId))
+      .collect();
+    const maxOrder = existingTasks.length
+      ? Math.max(...existingTasks.map((t) => t.sortOrder))
+      : 0;
+
+    const taskId = await ctx.db.insert("tasks", {
+      briefId: args.briefId,
+      title: args.title,
+      description: args.description,
+      assigneeId: userId,
+      assignedBy: args.assignorId,
+      status: "pending",
+      sortOrder: maxOrder + 1000,
+      duration: args.duration,
+      durationMinutes: args.durationMinutes,
+      ...(args.deadline ? { deadline: args.deadline } : {}),
+      assignedAt: Date.now(),
+    });
+
+    await ctx.db.insert("notifications", {
+      recipientId: args.assignorId,
+      type: "task_assigned",
+      title: "Employee added a task",
+      message: `${user.name ?? user.email} added a task "${args.title}" under "${brief.title}"`,
+      briefId: args.briefId,
+      taskId,
+      triggeredBy: userId,
+      read: false,
+      createdAt: Date.now(),
+    });
+
+    return taskId;
+  },
+});
+
 export const updateTaskBlockers = mutation({
   args: {
     taskId: v.id("tasks"),
