@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { useParams } from "next/navigation";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import {
@@ -102,6 +102,14 @@ export default function JsrPublicPage() {
 
   // Client approval sidebar state
   const [reviewSidebarItem, setReviewSidebarItem] = useState<any>(null);
+  useEffect(() => {
+    if (reviewSidebarItem) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [reviewSidebarItem]);
   const [reviewNote, setReviewNote] = useState("");
   const [reviewAction, setReviewAction] = useState<"approve" | "changes" | "deny" | null>(null);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
@@ -683,7 +691,7 @@ export default function JsrPublicPage() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            <div className="flex-1 overflow-y-auto p-6 space-y-5" style={{ overscrollBehavior: "contain" }}>
               <div>
                 <h4 className="font-semibold text-[14px] text-[#171717] mb-1">{reviewSidebarItem.taskTitle}</h4>
                 <p className="text-[12px] text-[#a3a3a3] mb-2">{reviewSidebarItem.briefTitle}</p>

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { useParams, useRouter } from "next/navigation";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Badge, Button, Card, ConfirmModal, Input, useToast } from "@/components/ui";
@@ -83,6 +83,14 @@ export default function BrandDetailPage() {
 
   // Chat sidebar
   const [chatSidebarOpen, setChatSidebarOpen] = useState(false);
+  useEffect(() => {
+    if (chatSidebarOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [chatSidebarOpen]);
 
   // Client task management
   const brandClientTasks = useQuery(api.jsr.listBrandTasksForClient, { brandId });
@@ -906,7 +914,7 @@ export default function BrandDetailPage() {
             </div>
           </div>
           {/* JSR Links (in right sidebar, under Briefs) */}
-          {isAdmin && (
+          {canManageLinks && (
             <div className="rounded-xl border border-[var(--border)] bg-white overflow-hidden">
               <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
                 <div className="flex items-center gap-2">
@@ -965,7 +973,7 @@ export default function BrandDetailPage() {
           )}
 
           {/* Manage Client Tasks (in right sidebar, under JSR links) */}
-          {isAdmin && (
+          {canManageLinks && (
             <div className="rounded-xl border border-[var(--border)] bg-white overflow-hidden">
               <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
                 <div className="flex items-center gap-2">
@@ -1096,7 +1104,7 @@ export default function BrandDetailPage() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-1">
+            <div className="flex-1 overflow-y-auto p-4 space-y-1" style={{ overscrollBehavior: "contain" }}>
               {(jsrMessages ?? []).length === 0 && (
                 <p className="text-[12px] text-[var(--text-muted)] text-center py-8">No messages yet. Start a conversation with the client.</p>
               )}
