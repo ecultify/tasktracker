@@ -186,6 +186,7 @@ export const getTeamMemberTasks = query({
       .collect();
     const allBriefs = await ctx.db.query("briefs").collect();
     const allUsers = await ctx.db.query("users").collect();
+    const allBrands = await ctx.db.query("brands").collect();
 
     const activeBriefs = allBriefs.filter(
       (b) => !["archived", "completed"].includes(b.status)
@@ -204,6 +205,7 @@ export const getTeamMemberTasks = query({
       },
       tasks: activeTasks.map((t) => {
         const brief = activeBriefs.find((b) => b._id === t.briefId);
+        const brand = brief?.brandId ? allBrands.find((br) => br._id === brief.brandId) : null;
         const assignedByUser = allUsers.find((u) => u._id === t.assignedBy);
         return {
           _id: t._id,
@@ -212,6 +214,7 @@ export const getTeamMemberTasks = query({
           duration: t.duration,
           briefTitle: brief?.title ?? "Unknown",
           briefId: t.briefId,
+          brandName: brand?.name ?? "—",
           assignedByName: assignedByUser?.name ?? assignedByUser?.email ?? "Unknown",
           deadline: t.deadline,
         };

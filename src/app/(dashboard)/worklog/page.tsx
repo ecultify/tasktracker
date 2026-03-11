@@ -475,7 +475,7 @@ export default function WorkLogPage() {
           />
           <div
             ref={panelRef}
-            className={`fixed right-0 top-0 h-full w-full sm:w-[560px] z-50 bg-white border-l border-[var(--border)] shadow-xl flex flex-col transition-transform duration-200 ease-out ${
+            className={`fixed right-0 top-0 h-full w-full sm:w-[700px] z-50 bg-white border-l border-[var(--border)] shadow-xl flex flex-col transition-transform duration-200 ease-out ${
               panelOpen ? "translate-x-0" : "translate-x-full"
             }`}
           >
@@ -529,6 +529,7 @@ export default function WorkLogPage() {
                         <thead>
                           <tr className="bg-[var(--bg-hover)]">
                             <th className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide px-3 py-2">Task</th>
+                            <th className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide px-3 py-2">Brand</th>
                             <th className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide px-3 py-2">Brief</th>
                             <th className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide px-3 py-2">Status</th>
                             <th className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide px-3 py-2">Duration</th>
@@ -551,7 +552,12 @@ export default function WorkLogPage() {
                                     </span>
                                   </td>
                                   <td className="px-3 py-2.5">
-                                    <span className="text-[11px] text-[var(--text-secondary)] truncate block max-w-[100px]">
+                                    <span className="text-[11px] text-[var(--text-secondary)] truncate block max-w-[120px]">
+                                      {(task as any).brandName ?? "—"}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <span className="text-[11px] text-[var(--text-secondary)] truncate block max-w-[120px]">
                                       {task.briefTitle}
                                     </span>
                                   </td>
