@@ -475,7 +475,7 @@ export default function WorkLogPage() {
           />
           <div
             ref={panelRef}
-            className={`fixed right-0 top-0 h-full w-full sm:w-[700px] z-50 bg-white border-l border-[var(--border)] shadow-xl flex flex-col transition-transform duration-200 ease-out ${
+            className={`fixed right-0 top-0 h-full w-full sm:w-[820px] z-50 bg-white border-l border-[var(--border)] shadow-xl flex flex-col transition-transform duration-200 ease-out ${
               panelOpen ? "translate-x-0" : "translate-x-full"
             }`}
           >
@@ -557,7 +557,7 @@ export default function WorkLogPage() {
                                     </span>
                                   </td>
                                   <td className="px-3 py-2.5">
-                                    <span className="text-[11px] text-[var(--text-secondary)] truncate block max-w-[120px]">
+                                    <span className="text-[11px] text-[var(--text-secondary)] block max-w-[180px] leading-snug line-clamp-2">
                                       {task.briefTitle}
                                     </span>
                                   </td>
