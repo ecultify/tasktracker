@@ -61,11 +61,16 @@ export default function BriefsPage() {
   const [briefMode, setBriefMode] = useState<"master" | "single">("master");
 
   // Single task brief fields
-  const [stTaskDesc, setStTaskDesc] = useState("");
   const [stAssignee, setStAssignee] = useState("");
+  const [stTeamId, setStTeamId] = useState("");
   const [stDurVal, setStDurVal] = useState("2");
   const [stDurUnit, setStDurUnit] = useState<"m" | "h" | "d">("h");
   const allUsers = useQuery(api.users.listAllUsers);
+  const allTeams = useQuery(api.teams.listTeams, {});
+  const stTeamMembers = useQuery(
+    api.teams.getTeamMembers,
+    stTeamId ? { teamId: stTeamId as Id<"teams"> } : "skip"
+  );
 
   const templates = useQuery(api.templates.listTemplates);
   const createFromTemplate = useMutation(api.templates.createFromTemplate);
@@ -127,8 +132,6 @@ export default function BriefsPage() {
   }, [briefs, brands]);
 
 
-  const employees = (allUsers ?? []).filter((u: any) => u.role === "employee");
-
   function parseDuration(str: string): number {
     const m = str.match(/^(\d+)(m|h|d)$/i);
     if (!m) return 0;
@@ -148,8 +151,8 @@ export default function BriefsPage() {
     setDeadline(undefined);
     setBriefType("");
     setBriefMode("master");
-    setStTaskDesc("");
     setStAssignee("");
+    setStTeamId("");
     setStDurVal("2");
     setStDurUnit("h");
     setShowModal(true);
@@ -174,7 +177,6 @@ export default function BriefsPage() {
         briefType: isSingle ? "single_task" as BriefType : (briefType || undefined) as BriefType | undefined,
         ...(isSingle && stAssignee ? {
           taskTitle: title,
-          taskDescription: stTaskDesc || undefined,
           taskAssigneeId: stAssignee as Id<"users">,
           taskDuration,
           taskDurationMinutes,
@@ -188,8 +190,8 @@ export default function BriefsPage() {
       setDeadline(undefined);
       setBriefType("");
       setBriefMode("master");
-      setStTaskDesc("");
       setStAssignee("");
+      setStTeamId("");
       setStDurVal("2");
       setStDurUnit("h");
       toast("success", isSingle ? "Single task brief created" : "Brief created");
@@ -545,24 +547,33 @@ export default function BriefsPage() {
                       <option value="copywriting">Copywriting</option>
                     </select>
                   </div>
-                  <Textarea
-                    label="Task Description"
-                    value={stTaskDesc}
-                    onChange={(e) => setStTaskDesc(e.target.value)}
-                    placeholder="Describe the task in detail..."
-                  />
+                  <div>
+                    <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-2">Team</label>
+                    <select
+                      value={stTeamId}
+                      onChange={(e) => { setStTeamId(e.target.value); setStAssignee(""); }}
+                      required
+                      className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                    >
+                      <option value="">Select team...</option>
+                      {(allTeams ?? []).map((t: any) => (
+                        <option key={t._id} value={t._id}>{t.name}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <label className="font-medium text-[13px] text-[var(--text-secondary)] block mb-2">Assignee</label>
                     <select
                       value={stAssignee}
                       onChange={(e) => setStAssignee(e.target.value)}
                       required
-                      className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)]"
+                      disabled={!stTeamId}
+                      className="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-admin)] disabled:opacity-50"
                     >
-                      <option value="">Select assignee...</option>
-                      {employees.map((emp: any) => (
-                        <option key={emp._id} value={emp._id}>
-                          {emp.name ?? emp.email}{emp.designation ? ` — ${emp.designation}` : ""}
+                      <option value="">{stTeamId ? "Select team member..." : "Select a team first"}</option>
+                      {(stTeamMembers ?? []).map((m: any) => (
+                        <option key={m._id} value={m._id}>
+                          {m.name ?? m.email}{m.role === "admin" ? " (Admin)" : m.designation ? ` — ${m.designation}` : ""}
                         </option>
                       ))}
                     </select>
